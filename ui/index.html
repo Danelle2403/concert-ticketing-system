@@ -9,6 +9,10 @@
 </head>
 <body>
 
+    <!-- CURSOR -->
+    <div class="cursor" id="cursor"></div>
+    <div class="cursor-follower" id="cursor-follower"></div>
+
     <!-- TICKER -->
     <div class="ticker-wrap">
         <div class="ticker-track">
@@ -36,7 +40,7 @@
     </div>
 
     <!-- NAVBAR -->
-    <nav class="navbar">
+    <nav class="navbar" id="navbar">
         <div class="nav-brand">Concert Hub</div>
         <div class="nav-links">
             <a href="index.html" class="active">Browse</a>
@@ -51,15 +55,31 @@
         </div>
     </nav>
 
-    <!-- FEATURED CONCERT HERO -->
+    <!-- HERO -->
     <section class="hero-featured">
         <div class="hero-orb hero-orb-1"></div>
         <div class="hero-orb hero-orb-2"></div>
         <div class="hero-orb hero-orb-3"></div>
         <div class="hero-overlay"></div>
+
         <div class="hero-content">
-            <span class="hero-label reveal">Featured Event</span>
-            <h1 class="hero-title reveal-delay-1">The Midnight<br>World Tour 2026</h1>
+            <div class="hero-top-row reveal">
+                <span class="hero-label">Featured Event</span>
+                <div class="hero-live">
+                    <span class="live-dot"></span>
+                    <span>Tickets On Sale</span>
+                </div>
+            </div>
+
+            <h1 class="hero-title">
+                <span class="word-reveal">The</span>
+                <span class="word-reveal">Midnight</span>
+                <br>
+                <span class="word-reveal">World</span>
+                <span class="word-reveal">Tour</span>
+                <span class="word-reveal hero-year">2026</span>
+            </h1>
+
             <div class="hero-meta reveal-delay-2">
                 <span>Marina Bay Sands, Singapore</span>
                 <span class="dot">·</span>
@@ -67,11 +87,36 @@
                 <span class="dot">·</span>
                 <span>From $88</span>
             </div>
+
+            <!-- COUNTDOWN -->
+            <div class="hero-countdown reveal-delay-2">
+                <div class="countdown-block">
+                    <span class="countdown-num" id="cd-days">00</span>
+                    <span class="countdown-label">Days</span>
+                </div>
+                <span class="countdown-sep">:</span>
+                <div class="countdown-block">
+                    <span class="countdown-num" id="cd-hours">00</span>
+                    <span class="countdown-label">Hours</span>
+                </div>
+                <span class="countdown-sep">:</span>
+                <div class="countdown-block">
+                    <span class="countdown-num" id="cd-mins">00</span>
+                    <span class="countdown-label">Mins</span>
+                </div>
+                <span class="countdown-sep">:</span>
+                <div class="countdown-block">
+                    <span class="countdown-num" id="cd-secs">00</span>
+                    <span class="countdown-label">Secs</span>
+                </div>
+            </div>
+
             <div class="hero-actions reveal-delay-3">
                 <button class="btn-primary" onclick="scrollToEvents()">Get Tickets</button>
                 <button class="btn-ghost">Learn More</button>
             </div>
         </div>
+
         <div class="hero-scroll-hint">Scroll to explore</div>
     </section>
 
@@ -79,43 +124,43 @@
     <section class="stats-bar">
         <div class="stat animate-on-scroll">
             <div class="stat-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
                     <line x1="16" y1="2" x2="16" y2="6"/>
                     <line x1="8" y1="2" x2="8" y2="6"/>
                     <line x1="3" y1="10" x2="21" y2="10"/>
                 </svg>
             </div>
-            <span class="stat-number">120+</span>
+            <span class="stat-number" data-target="120">0</span><span class="stat-suffix">+</span>
             <span class="stat-label">Events This Year</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat animate-on-scroll">
             <div class="stat-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M9 19V6l12-3v13"/>
                     <circle cx="6" cy="19" r="3"/>
                     <circle cx="18" cy="16" r="3"/>
                 </svg>
             </div>
-            <span class="stat-number">80+</span>
+            <span class="stat-number" data-target="80">0</span><span class="stat-suffix">+</span>
             <span class="stat-label">Artists</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat animate-on-scroll">
             <div class="stat-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
                     <polyline points="9 22 9 12 15 12 15 22"/>
                 </svg>
             </div>
-            <span class="stat-number">12</span>
+            <span class="stat-number" data-target="12">0</span>
             <span class="stat-label">Venues</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat animate-on-scroll">
             <div class="stat-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M20 12V22H4V12"/>
                     <path d="M22 7H2v5h20V7z"/>
                     <path d="M12 22V7"/>
@@ -123,10 +168,32 @@
                     <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
                 </svg>
             </div>
-            <span class="stat-number">50k+</span>
+            <span class="stat-number" data-target="50">0</span><span class="stat-suffix">k+</span>
             <span class="stat-label">Tickets Sold</span>
         </div>
     </section>
+
+    <!-- HORIZONTAL SCROLL STRIP -->
+    <div class="strip-scroll">
+        <div class="strip-track">
+            <span>Pop</span><span class="strip-sep">*</span>
+            <span>Electronic</span><span class="strip-sep">*</span>
+            <span>Hip-Hop</span><span class="strip-sep">*</span>
+            <span>R&B</span><span class="strip-sep">*</span>
+            <span>Rock</span><span class="strip-sep">*</span>
+            <span>Jazz</span><span class="strip-sep">*</span>
+            <span>Synthwave</span><span class="strip-sep">*</span>
+            <span>Indie</span><span class="strip-sep">*</span>
+            <span>Pop</span><span class="strip-sep">*</span>
+            <span>Electronic</span><span class="strip-sep">*</span>
+            <span>Hip-Hop</span><span class="strip-sep">*</span>
+            <span>R&B</span><span class="strip-sep">*</span>
+            <span>Rock</span><span class="strip-sep">*</span>
+            <span>Jazz</span><span class="strip-sep">*</span>
+            <span>Synthwave</span><span class="strip-sep">*</span>
+            <span>Indie</span><span class="strip-sep">*</span>
+        </div>
+    </div>
 
     <!-- BROWSE BY GENRE -->
     <section class="section" id="genres">
@@ -135,27 +202,27 @@
             <a href="#" class="section-link">View all</a>
         </div>
         <div class="genre-grid">
-            <div class="genre-card animate-on-scroll" style="--genre-color: #7b2d8b;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #7b2d8b; --delay: 0s">
                 <span class="genre-name">Pop</span>
                 <span class="genre-count">24 events</span>
             </div>
-            <div class="genre-card animate-on-scroll" style="--genre-color: #d4709a;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #d4709a; --delay: 0.05s">
                 <span class="genre-name">R&B</span>
                 <span class="genre-count">18 events</span>
             </div>
-            <div class="genre-card animate-on-scroll" style="--genre-color: #3d0060;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #3d0060; --delay: 0.1s">
                 <span class="genre-name">Electronic</span>
                 <span class="genre-count">31 events</span>
             </div>
-            <div class="genre-card animate-on-scroll" style="--genre-color: #f2c4d0;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #f2c4d0; --delay: 0.15s">
                 <span class="genre-name">Hip-Hop</span>
                 <span class="genre-count">22 events</span>
             </div>
-            <div class="genre-card animate-on-scroll" style="--genre-color: #7b2d8b;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #7b2d8b; --delay: 0.2s">
                 <span class="genre-name">Rock</span>
                 <span class="genre-count">15 events</span>
             </div>
-            <div class="genre-card animate-on-scroll" style="--genre-color: #d4709a;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #d4709a; --delay: 0.25s">
                 <span class="genre-name">Jazz</span>
                 <span class="genre-count">9 events</span>
             </div>
@@ -193,22 +260,22 @@
             <a href="#" class="section-link">View all</a>
         </div>
         <div class="artists-grid">
-            <div class="artist-card animate-on-scroll">
+            <div class="artist-card animate-on-scroll" style="--delay: 0s">
                 <div class="artist-avatar" style="background: linear-gradient(135deg, #3d0060, #d4709a);">TM</div>
                 <span class="artist-name">The Midnight</span>
                 <span class="artist-genre">Synthwave</span>
             </div>
-            <div class="artist-card animate-on-scroll">
+            <div class="artist-card animate-on-scroll" style="--delay: 0.1s">
                 <div class="artist-avatar" style="background: linear-gradient(135deg, #7b2d8b, #3d0060);">WA</div>
                 <span class="artist-name">Wave Artist</span>
                 <span class="artist-genre">Electronic</span>
             </div>
-            <div class="artist-card animate-on-scroll">
+            <div class="artist-card animate-on-scroll" style="--delay: 0.2s">
                 <div class="artist-avatar" style="background: linear-gradient(135deg, #d4709a, #7b2d8b);">NB</div>
                 <span class="artist-name">Neon Bloom</span>
                 <span class="artist-genre">Pop</span>
             </div>
-            <div class="artist-card animate-on-scroll">
+            <div class="artist-card animate-on-scroll" style="--delay: 0.3s">
                 <div class="artist-avatar" style="background: linear-gradient(135deg, #f2c4d0, #d4709a);">SR</div>
                 <span class="artist-name">Soul Remedy</span>
                 <span class="artist-genre">R&B</span>
@@ -282,7 +349,103 @@
     <script src="js/api.js"></script>
     <script>
 
-        // Check logged in user
+        // ── CUSTOM CURSOR ─────────────────────────────────────
+        const cursor = document.getElementById("cursor");
+        const follower = document.getElementById("cursor-follower");
+        let mouseX = 0, mouseY = 0, followerX = 0, followerY = 0;
+
+        document.addEventListener("mousemove", e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            cursor.style.left = mouseX + "px";
+            cursor.style.top = mouseY + "px";
+        });
+
+        function animateFollower() {
+            followerX += (mouseX - followerX) * 0.1;
+            followerY += (mouseY - followerY) * 0.1;
+            follower.style.left = followerX + "px";
+            follower.style.top = followerY + "px";
+            requestAnimationFrame(animateFollower);
+        }
+        animateFollower();
+
+        document.querySelectorAll("a, button").forEach(el => {
+            el.addEventListener("mouseenter", () => {
+                cursor.classList.add("cursor-hover");
+                follower.classList.add("cursor-hover");
+            });
+            el.addEventListener("mouseleave", () => {
+                cursor.classList.remove("cursor-hover");
+                follower.classList.remove("cursor-hover");
+            });
+        });
+
+        // ── NAVBAR SHRINK ON SCROLL ───────────────────────────
+        window.addEventListener("scroll", () => {
+            const navbar = document.getElementById("navbar");
+            if (window.scrollY > 60) {
+                navbar.classList.add("navbar-scrolled");
+            } else {
+                navbar.classList.remove("navbar-scrolled");
+            }
+        });
+
+        // ── COUNTDOWN ─────────────────────────────────────────
+        function updateCountdown() {
+            const target = new Date("2026-08-15T20:00:00");
+            const now = new Date();
+            const diff = target - now;
+            if (diff <= 0) return;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const secs = Math.floor((diff % (1000 * 60)) / 1000);
+            document.getElementById("cd-days").textContent = String(days).padStart(2, "0");
+            document.getElementById("cd-hours").textContent = String(hours).padStart(2, "0");
+            document.getElementById("cd-mins").textContent = String(mins).padStart(2, "0");
+            document.getElementById("cd-secs").textContent = String(secs).padStart(2, "0");
+        }
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
+
+        // ── WORD REVEAL ───────────────────────────────────────
+        document.querySelectorAll(".word-reveal").forEach((el, i) => {
+            el.style.animationDelay = `${0.1 + i * 0.12}s`;
+        });
+
+        // ── STAT COUNTER ──────────────────────────────────────
+        function animateCounter(el, target, suffix) {
+            let current = 0;
+            const step = Math.ceil(target / 40);
+            const timer = setInterval(() => {
+                current = Math.min(current + step, target);
+                el.textContent = current;
+                if (current >= target) clearInterval(timer);
+            }, 30);
+        }
+
+        // ── SCROLL OBSERVER ───────────────────────────────────
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const delay = entry.target.style.getPropertyValue("--delay") || "0s";
+                    entry.target.style.transitionDelay = delay;
+                    entry.target.classList.add("in-view");
+
+                    // Counter animation
+                    const num = entry.target.querySelector(".stat-number");
+                    if (num && !num.dataset.animated) {
+                        num.dataset.animated = true;
+                        animateCounter(num, parseInt(num.dataset.target), "");
+                    }
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll(".animate-on-scroll").forEach(el => observer.observe(el));
+
+        // ── USER CHECK ────────────────────────────────────────
         const user = JSON.parse(sessionStorage.getItem("user"));
         if (user) {
             document.getElementById("nav-login").classList.add("hidden");
@@ -290,39 +453,23 @@
             document.getElementById("nav-user").textContent = user.name;
         }
 
-        // My Tickets — redirect to login if not logged in
         function goToTickets(e) {
             e.preventDefault();
-            if (user) {
-                window.location.href = "request-refund.html";
-            } else {
-                window.location.href = "login.html";
-            }
+            window.location.href = user ? "request-refund.html" : "login.html";
         }
 
         function scrollToEvents() {
             document.getElementById("upcoming").scrollIntoView({ behavior: "smooth" });
         }
 
-        // Scroll animation observer
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add("in-view");
-                }
-            });
-        }, { threshold: 0.1 });
-
-        document.querySelectorAll(".animate-on-scroll").forEach(el => observer.observe(el));
-
-        // Filter tabs
+        // ── FILTER TABS ───────────────────────────────────────
         function filterEvents(genre, btn) {
             document.querySelectorAll(".filter-tab").forEach(t => t.classList.remove("active"));
             btn.classList.add("active");
             loadEvents(genre);
         }
 
-        // Load events
+        // ── LOAD EVENTS ───────────────────────────────────────
         async function loadEvents(genre = "all") {
             const grid = document.getElementById("events-grid");
             const loading = document.getElementById("events-loading");
@@ -337,17 +484,14 @@
             try {
                 const data = await getEvents();
                 loading.classList.add("hidden");
-
                 let events = data.events || [];
                 if (genre !== "all") {
                     events = events.filter(e => e.genre?.toLowerCase() === genre);
                 }
-
                 if (events.length === 0) {
                     empty.classList.remove("hidden");
                     return;
                 }
-
                 const template = document.getElementById("event-card-template");
                 events.forEach(event => {
                     const card = template.content.cloneNode(true);
@@ -362,9 +506,7 @@
                     });
                     grid.appendChild(card);
                 });
-
                 document.querySelectorAll(".animate-on-scroll:not(.in-view)").forEach(el => observer.observe(el));
-
             } catch (err) {
                 loading.classList.add("hidden");
                 error.classList.remove("hidden");
