@@ -3,102 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Concert Ticketing | Login</title>
+    <title>Concert Hub | Login</title>
     <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
     <!-- NAVBAR -->
     <nav class="navbar">
-        <div class="nav-brand">🎵 ConcertHub</div>
-        <div class="nav-links">
-            <a href="index.html">Browse Events</a>
+        <div class="nav-brand">Concert Hub</div>
+        <div class="nav-actions">
+            <a href="index.html" class="btn-back">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+                Back to Home
+            </a>
         </div>
     </nav>
 
-    <!-- LOGIN / REGISTER FORM -->
-    <main class="container form-container">
+    <main class="auth-container">
 
-        <!-- TAB TOGGLE -->
-        <div class="tab-group">
-            <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">Login</button>
-            <button class="tab-btn" id="tab-register" onclick="switchTab('register')">Register</button>
+        <!-- LEFT PANEL — BRANDING -->
+        <div class="auth-left">
+            <div class="auth-left-content">
+                <h2>Your next concert<br>experience awaits.</h2>
+                <p>Buy tickets, manage events, and never miss a show.</p>
+                <div class="auth-features">
+                    <div class="auth-feature">
+                        <div class="auth-feature-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 19V6l12-3v13M9 19c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm12-3c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2z"/>
+                            </svg>
+                        </div>
+                        <span>Browse hundreds of live events</span>
+                    </div>
+                    <div class="auth-feature">
+                        <div class="auth-feature-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                                <line x1="1" y1="10" x2="23" y2="10"/>
+                            </svg>
+                        </div>
+                        <span>Secure and fast checkout</span>
+                    </div>
+                    <div class="auth-feature">
+                        <div class="auth-feature-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                        </div>
+                        <span>Manage your tickets anytime</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <!-- LOGIN PANEL -->
-        <div id="panel-login" class="form-panel">
-            <h2>Welcome Back</h2>
-            <p class="form-subtitle">Enter your User ID to continue</p>
+        <!-- RIGHT PANEL — FORMS -->
+        <div class="auth-right">
 
-            <div class="form-group">
-                <label for="login-id">User ID</label>
-                <input type="text" id="login-id" placeholder="e.g. U001">
+            <!-- LOGIN PANEL -->
+            <div id="panel-login" class="auth-form-wrap">
+                <div class="auth-form-header">
+                    <h2>Welcome Back</h2>
+                    <p>Enter your User ID to continue</p>
+                </div>
+
+                <div class="auth-divider"></div>
+
+                <div class="form-group">
+                    <label for="login-id">User ID</label>
+                    <input type="text" id="login-id" placeholder="e.g. U001">
+                </div>
+
+                <div id="login-error" class="error-msg hidden">
+                    User not found. Please check your ID or register.
+                </div>
+
+                <button class="btn-primary full-width" onclick="handleLogin()">Login</button>
+
+                <p class="auth-switch">
+                    Don't have an account?
+                    <button class="auth-switch-btn" onclick="switchTab('register')">Register here</button>
+                </p>
             </div>
 
-            <div id="login-error" class="error-msg hidden">
-                User not found. Please check your ID or register.
+            <!-- REGISTER PANEL -->
+            <div id="panel-register" class="auth-form-wrap hidden">
+                <div class="auth-form-header">
+                    <h2>Create Account</h2>
+                    <p>Register as a fan or event manager</p>
+                </div>
+
+                <div class="auth-divider"></div>
+
+                <div class="form-group">
+                    <label for="reg-name">Full Name</label>
+                    <input type="text" id="reg-name" placeholder="Your full name">
+                </div>
+                <div class="form-group">
+                    <label for="reg-email">Email</label>
+                    <input type="email" id="reg-email" placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="reg-role">I am a</label>
+                    <select id="reg-role">
+                        <option value="fan">Fan</option>
+                        <option value="manager">Event Manager</option>
+                    </select>
+                </div>
+
+                <div id="register-error" class="error-msg hidden">
+                    Registration failed. Please try again.
+                </div>
+                <div id="register-success" class="success-msg hidden">
+                    Account created! Redirecting...
+                </div>
+
+                <button class="btn-primary full-width" onclick="handleRegister()">Create Account</button>
+
+                <p class="auth-switch">
+                    Already have an account?
+                    <button class="auth-switch-btn" onclick="switchTab('login')">Login here</button>
+                </p>
             </div>
 
-            <button class="btn-primary full-width" onclick="handleLogin()">Login</button>
         </div>
-
-        <!-- REGISTER PANEL -->
-        <div id="panel-register" class="form-panel hidden">
-            <h2>Create Account</h2>
-            <p class="form-subtitle">Register as a fan or event manager</p>
-
-            <div class="form-group">
-                <label for="reg-name">Full Name</label>
-                <input type="text" id="reg-name" placeholder="Your full name">
-            </div>
-
-            <div class="form-group">
-                <label for="reg-email">Email</label>
-                <input type="email" id="reg-email" placeholder="you@example.com">
-            </div>
-
-            <div class="form-group">
-                <label for="reg-role">Role</label>
-                <select id="reg-role">
-                    <option value="fan">Fan</option>
-                    <option value="manager">Event Manager</option>
-                </select>
-            </div>
-
-            <div id="register-error" class="error-msg hidden">
-                Registration failed. Please try again.
-            </div>
-            <div id="register-success" class="success-msg hidden">
-                Account created! Redirecting...
-            </div>
-
-            <button class="btn-primary full-width" onclick="handleRegister()">Create Account</button>
-        </div>
-
     </main>
 
     <script src="js/api.js"></script>
     <script>
-
-        // Switch between Login and Register tabs
         function switchTab(tab) {
             document.getElementById("panel-login").classList.toggle("hidden", tab !== "login");
             document.getElementById("panel-register").classList.toggle("hidden", tab !== "register");
-            document.getElementById("tab-login").classList.toggle("active", tab === "login");
-            document.getElementById("tab-register").classList.toggle("active", tab === "register");
         }
 
-        // LOGIN — calls GET /user/userId
         async function handleLogin() {
             const userId = document.getElementById("login-id").value.trim();
             if (!userId) return;
-
             try {
                 const data = await loginUser(userId);
                 if (data && data.userId) {
-                    // Save user to sessionStorage
                     sessionStorage.setItem("user", JSON.stringify(data));
-                    // Redirect based on role
                     if (data.role === "manager") {
                         window.location.href = "manage-event.html";
                     } else {
@@ -112,14 +159,11 @@
             }
         }
 
-        // REGISTER — calls POST /user/new
         async function handleRegister() {
             const name = document.getElementById("reg-name").value.trim();
             const email = document.getElementById("reg-email").value.trim();
             const role = document.getElementById("reg-role").value;
-
             if (!name || !email) return;
-
             try {
                 const data = await registerUser({ name, email, role });
                 if (data && data.userId) {
@@ -135,13 +179,7 @@
                 document.getElementById("register-error").classList.remove("hidden");
             }
         }
-
     </script>
 
 </body>
 </html>
-
-
-
-
-
