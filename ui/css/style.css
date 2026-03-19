@@ -1446,3 +1446,88 @@ a:hover { color: var(--text-primary); }
     border-color: var(--border-hover);
     background: var(--accent-soft);
 }
+
+Add these styles to the bottom of your css/style.css — don't replace the whole file, just paste at the very end:
+
+css/* ── AUTH TABS ───────────────────────────────────────────── */
+.auth-tabs {
+    display: flex;
+    width: 100%;
+    max-width: 400px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    margin-bottom: 32px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-radius: 6px;
+    transition: var(--transition);
+    letter-spacing: 0.3px;
+}
+
+.auth-tab:hover:not(.active) {
+    color: var(--text-primary);
+}
+
+.auth-tab.active {
+    background: linear-gradient(135deg, var(--accent), var(--pink));
+    color: white;
+}
+
+/* ── STAT ICONS — BIGGER & ANIMATED ─────────────────────── */
+.stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 60px;
+    gap: 8px;
+    cursor: default;
+}
+
+.stat-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: var(--accent-soft);
+    border: 1px solid rgba(212, 112, 154, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--pink);
+    margin-bottom: 4px;
+    transition: transform 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stat-icon svg {
+    width: 28px;
+    height: 28px;
+    transition: transform 0.3s ease;
+}
+
+.stat:hover .stat-icon {
+    transform: scale(1.2);
+    background: var(--pink-soft);
+    box-shadow: 0 8px 24px rgba(212, 112, 154, 0.25);
+}
+
+.stat:hover .stat-icon svg {
+    transform: scale(1.1);
+}
+
+.stat:hover .stat-number {
+    background: linear-gradient(135deg, var(--blush), var(--pink));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
