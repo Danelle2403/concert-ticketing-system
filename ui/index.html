@@ -3,83 +3,288 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Concert Ticketing | Home</title>
+    <title>ConcertHub | Find Your Next Show</title>
     <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
     <!-- NAVBAR -->
     <nav class="navbar">
-        <div class="nav-brand">🎵 ConcertHub</div>
+        <div class="nav-brand">ConcertHub</div>
         <div class="nav-links">
-            <a href="index.html">Browse Events</a>
-            <a href="login.html" id="nav-login">Login</a>
-            <a href="manage-event.html" id="nav-manage" class="hidden">Manage Events</a>
-            <span id="nav-user" class="hidden"></span>
+            <a href="index.html" class="active">Browse</a>
+            <a href="index.html#genres">Genres</a>
+            <a href="index.html#artists">Artists</a>
+            <a href="index.html#upcoming">Upcoming</a>
+            <a href="request-refund.html">My Tickets</a>
+        </div>
+        <div class="nav-actions">
+            <a href="login.html" id="nav-login" class="btn-nav">Login</a>
+            <a href="manage-event.html" id="nav-manage" class="hidden btn-nav-outline">Manage Events</a>
+            <span id="nav-user" class="hidden nav-user-label"></span>
         </div>
     </nav>
 
-    <!-- HERO -->
-    <section class="hero">
-        <h1>Find Your Next Concert</h1>
-        <p>Browse upcoming events and grab your tickets</p>
+    <!-- FEATURED CONCERT HERO -->
+    <section class="hero-featured">
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+            <span class="hero-label">Featured Event</span>
+            <h1 class="hero-title">The Midnight<br>World Tour 2026</h1>
+            <div class="hero-meta">
+                <span>Marina Bay Sands, Singapore</span>
+                <span class="dot">·</span>
+                <span>15 Aug 2026</span>
+                <span class="dot">·</span>
+                <span>From $88</span>
+            </div>
+            <div class="hero-actions">
+                <button class="btn-primary" onclick="scrollToEvents()">Get Tickets</button>
+                <button class="btn-ghost">Learn More</button>
+            </div>
+        </div>
+        <div class="hero-scroll-hint">Scroll to explore</div>
     </section>
 
-    <!-- EVENTS GRID -->
-    <main class="container">
-        <h2>Upcoming Events</h2>
-        <div id="loading" class="loading-msg">Loading events...</div>
-        <div id="events-grid" class="events-grid"></div>
-        <div id="error-msg" class="error-msg hidden">
-            Failed to load events. Please try again later.
+    <!-- STATS BAR -->
+    <section class="stats-bar">
+        <div class="stat">
+            <span class="stat-number">120+</span>
+            <span class="stat-label">Events This Year</span>
         </div>
-    </main>
+        <div class="stat-divider"></div>
+        <div class="stat">
+            <span class="stat-number">80+</span>
+            <span class="stat-label">Artists</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+            <span class="stat-number">12</span>
+            <span class="stat-label">Venues</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+            <span class="stat-number">50k+</span>
+            <span class="stat-label">Tickets Sold</span>
+        </div>
+    </section>
+
+    <!-- BROWSE BY GENRE -->
+    <section class="section" id="genres">
+        <div class="section-header">
+            <h2 class="section-title">Browse by Genre</h2>
+            <a href="#" class="section-link">View all</a>
+        </div>
+        <div class="genre-grid">
+            <div class="genre-card" style="--genre-color: #7c3aed;">
+                <span class="genre-name">Pop</span>
+                <span class="genre-count">24 events</span>
+            </div>
+            <div class="genre-card" style="--genre-color: #db2777;">
+                <span class="genre-name">R&B</span>
+                <span class="genre-count">18 events</span>
+            </div>
+            <div class="genre-card" style="--genre-color: #0891b2;">
+                <span class="genre-name">Electronic</span>
+                <span class="genre-count">31 events</span>
+            </div>
+            <div class="genre-card" style="--genre-color: #d97706;">
+                <span class="genre-name">Hip-Hop</span>
+                <span class="genre-count">22 events</span>
+            </div>
+            <div class="genre-card" style="--genre-color: #059669;">
+                <span class="genre-name">Rock</span>
+                <span class="genre-count">15 events</span>
+            </div>
+            <div class="genre-card" style="--genre-color: #dc2626;">
+                <span class="genre-name">Jazz</span>
+                <span class="genre-count">9 events</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- UPCOMING EVENTS -->
+    <section class="section" id="upcoming">
+        <div class="section-header">
+            <h2 class="section-title">Upcoming Events</h2>
+            <div class="filter-tabs">
+                <button class="filter-tab active" onclick="filterEvents('all', this)">All</button>
+                <button class="filter-tab" onclick="filterEvents('pop', this)">Pop</button>
+                <button class="filter-tab" onclick="filterEvents('electronic', this)">Electronic</button>
+                <button class="filter-tab" onclick="filterEvents('hiphop', this)">Hip-Hop</button>
+            </div>
+        </div>
+
+        <div id="events-loading" class="loading-state">
+            <div class="loading-bar"></div>
+            <p>Loading events...</p>
+        </div>
+
+        <div id="events-grid" class="events-grid"></div>
+
+        <div id="events-error" class="error-state hidden">
+            Unable to load events at this time. Please try again later.
+        </div>
+
+        <div id="events-empty" class="empty-state hidden">
+            No events found. Check back soon.
+        </div>
+    </section>
+
+    <!-- FEATURED ARTISTS -->
+    <section class="section section-dark" id="artists">
+        <div class="section-header">
+            <h2 class="section-title">Featured Artists</h2>
+            <a href="#" class="section-link">View all</a>
+        </div>
+        <div class="artists-grid">
+            <div class="artist-card">
+                <div class="artist-avatar" style="background: linear-gradient(135deg, #7c3aed, #db2777);">TM</div>
+                <span class="artist-name">The Midnight</span>
+                <span class="artist-genre">Synthwave</span>
+            </div>
+            <div class="artist-card">
+                <div class="artist-avatar" style="background: linear-gradient(135deg, #0891b2, #7c3aed);">WA</div>
+                <span class="artist-name">Wave Artist</span>
+                <span class="artist-genre">Electronic</span>
+            </div>
+            <div class="artist-card">
+                <div class="artist-avatar" style="background: linear-gradient(135deg, #d97706, #dc2626);">NB</div>
+                <span class="artist-name">Neon Bloom</span>
+                <span class="artist-genre">Pop</span>
+            </div>
+            <div class="artist-card">
+                <div class="artist-avatar" style="background: linear-gradient(135deg, #059669, #0891b2);">SR</div>
+                <span class="artist-name">Soul Remedy</span>
+                <span class="artist-genre">R&B</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- NEWSLETTER -->
+    <section class="section section-newsletter">
+        <div class="newsletter-content">
+            <h2 class="section-title">Never Miss a Show</h2>
+            <p class="newsletter-subtitle">Get notified when new events drop in your city.</p>
+            <div class="newsletter-form">
+                <input type="email" placeholder="Enter your email address" class="newsletter-input">
+                <button class="btn-primary">Subscribe</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="footer-top">
+            <div class="footer-brand">
+                <span class="footer-logo">ConcertHub</span>
+                <p>Your gateway to live music experiences.</p>
+            </div>
+            <div class="footer-links">
+                <div class="footer-col">
+                    <h4>Discover</h4>
+                    <a href="#">Browse Events</a>
+                    <a href="#">Artists</a>
+                    <a href="#">Venues</a>
+                    <a href="#">Genres</a>
+                </div>
+                <div class="footer-col">
+                    <h4>Account</h4>
+                    <a href="login.html">Login</a>
+                    <a href="login.html">Register</a>
+                    <a href="request-refund.html">My Tickets</a>
+                    <a href="manage-event.html">Manage Events</a>
+                </div>
+                <div class="footer-col">
+                    <h4>Help</h4>
+                    <a href="#">FAQ</a>
+                    <a href="#">Contact Us</a>
+                    <a href="#">Refund Policy</a>
+                    <a href="#">Terms of Service</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <span>2026 ConcertHub. All rights reserved.</span>
+        </div>
+    </footer>
 
     <!-- EVENT CARD TEMPLATE -->
     <template id="event-card-template">
         <div class="event-card">
-            <div class="event-date"></div>
-            <h3 class="event-name"></h3>
-            <p class="event-venue"></p>
-            <p class="event-price"></p>
-            <button class="btn-primary buy-btn">Buy Tickets</button>
+            <div class="event-card-header">
+                <span class="event-card-date"></span>
+                <span class="event-card-genre"></span>
+            </div>
+            <h3 class="event-card-name"></h3>
+            <p class="event-card-venue"></p>
+            <div class="event-card-footer">
+                <span class="event-card-price"></span>
+                <button class="btn-card">Buy Tickets</button>
+            </div>
         </div>
     </template>
 
     <script src="js/api.js"></script>
     <script>
-        // Check if user is logged in
+        // Check logged in user
         const user = JSON.parse(sessionStorage.getItem("user"));
         if (user) {
             document.getElementById("nav-login").classList.add("hidden");
             document.getElementById("nav-user").classList.remove("hidden");
-            document.getElementById("nav-user").textContent = `👤 ${user.name}`;
+            document.getElementById("nav-user").textContent = user.name;
             if (user.role === "manager") {
                 document.getElementById("nav-manage").classList.remove("hidden");
             }
         }
 
-        // Load events on page load
-        async function loadEvents() {
+        function scrollToEvents() {
+            document.getElementById("upcoming").scrollIntoView({ behavior: "smooth" });
+        }
+
+        // Filter tabs
+        function filterEvents(genre, btn) {
+            document.querySelectorAll(".filter-tab").forEach(t => t.classList.remove("active"));
+            btn.classList.add("active");
+            loadEvents(genre);
+        }
+
+        // Load events
+        async function loadEvents(genre = "all") {
+            const grid = document.getElementById("events-grid");
+            const loading = document.getElementById("events-loading");
+            const error = document.getElementById("events-error");
+            const empty = document.getElementById("events-empty");
+
+            grid.innerHTML = "";
+            loading.classList.remove("hidden");
+            error.classList.add("hidden");
+            empty.classList.add("hidden");
+
             try {
                 const data = await getEvents();
-                const grid = document.getElementById("events-grid");
-                document.getElementById("loading").classList.add("hidden");
+                loading.classList.add("hidden");
 
-                if (!data.events || data.events.length === 0) {
-                    grid.innerHTML = "<p>No upcoming events found.</p>";
+                let events = data.events || [];
+                if (genre !== "all") {
+                    events = events.filter(e => e.genre?.toLowerCase() === genre);
+                }
+
+                if (events.length === 0) {
+                    empty.classList.remove("hidden");
                     return;
                 }
 
                 const template = document.getElementById("event-card-template");
-                data.events.forEach(event => {
+                events.forEach(event => {
                     const card = template.content.cloneNode(true);
-                    card.querySelector(".event-date").textContent = event.date || "TBC";
-                    card.querySelector(".event-name").textContent = event.name;
-                    card.querySelector(".event-venue").textContent = `📍 ${event.venue}`;
-                    card.querySelector(".event-price").textContent = `From $${event.price}`;
-                    card.querySelector(".buy-btn").addEventListener("click", () => {
-                        // Store selected event and go to buy page
+                    card.querySelector(".event-card-date").textContent = event.date || "TBC";
+                    card.querySelector(".event-card-genre").textContent = event.genre || "Live";
+                    card.querySelector(".event-card-name").textContent = event.name;
+                    card.querySelector(".event-card-venue").textContent = event.venue;
+                    card.querySelector(".event-card-price").textContent = `From $${event.price}`;
+                    card.querySelector(".btn-card").addEventListener("click", () => {
                         sessionStorage.setItem("selectedEvent", JSON.stringify(event));
                         window.location.href = "buy-ticket.html";
                     });
@@ -87,8 +292,8 @@
                 });
 
             } catch (err) {
-                document.getElementById("loading").classList.add("hidden");
-                document.getElementById("error-msg").classList.remove("hidden");
+                loading.classList.add("hidden");
+                error.classList.remove("hidden");
             }
         }
 
