@@ -1493,17 +1493,12 @@ css/* ── AUTH TABS ───────────────────
 }
 
 .stat-icon {
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    background: var(--accent-soft);
-    border: 1px solid rgba(212, 112, 154, 0.15);
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--pink);
     margin-bottom: 4px;
-    transition: transform 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+    transition: transform 0.3s ease;
 }
 
 .stat-icon svg {
