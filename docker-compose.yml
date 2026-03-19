@@ -1,1 +1,88 @@
+version: "3.8"
+
+services:
+
+  # ── UI LAYER ────────────────────────────────────────────────
+  ui:
+    image: nginx:alpine
+    volumes:
+      - ./ui:/usr/share/nginx/html
+    ports:
+      - "80:80"
+    networks:
+      - ticketing-net
+
+  # ── USER SERVICE ─────────────────────────────────────────────
+  user-service:
+    build: ./user-service
+    ports:
+      - "5001:5000"
+    environment:
+      - DB_HOST=user-db
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=user_db
+    depends_on:
+      user-db:
+        condition: service_healthy
+    networks:
+      - ticketing-net
+
+  # ── USER SERVICE DATABASE ────────────────────────────────────
+  user-db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=user_db
+    volumes:
+      - user-db-data:/var/lib/mysql
+      - ./user-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ticketing-net
+
+  # ── RABBITMQ ─────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"    # AMQP port for services
+      - "15672:15672"  # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ticketing-net
+
+  # ── GROUPMATES ADD THEIR SERVICES BELOW ─────────────────────
+  # ticket-service:
+  #   build: ./ticket-service
+  #   ports:
+  #     - "5002:5000"
+  #   networks:
+  #     - ticketing-net
+
+  # order-service:
+  #   build: ./order-service
+  #   ports:
+  #     - "5003:5000"
+  #   networks:
+  #     - ticketing-net
+
+# ── VOLUMES ───────────────────────────────────────────────────
+volumes:
+  user-db-data:
+
+# ── NETWORKS ──────────────────────────────────────────────────
+networks:
+  ticketing-net:
+    driver: bridge
 
