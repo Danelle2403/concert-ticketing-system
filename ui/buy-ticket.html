@@ -1,1 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concert Ticketing | Buy Tickets</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
 
+    <!-- NAVBAR -->
+    <nav class="navbar">
+        <div class="nav-brand">🎵 ConcertHub</div>
+        <div class="nav-links">
+            <a href="index.html">Browse Events</a>
+            <a href="request-refund.html">My Tickets</a>
+            <span id="nav-user"></span>
+        </div>
+    </nav>
+
+    <main class="container form-container">
+
+        <!-- EVENT SUMMARY -->
+        <div id="event-summary" class="event-summary-card">
+            <h2 id="event-name">Loading event...</h2>
+            <p id="event-venue"></p>
+            <p id="event-date"></p>
+            <p id="event-price"></p>
+        </div>
+
+        <!-- PURCHASE FORM -->
+        <div class="form-panel">
+            <h2>Your Details</h2>
+
+            <div class="form-group">
+                <label for="buyer-name">Full Name</label>
+                <input type="text" id="buyer-name" placeholder="Your full name">
+            </div>
+
+            <div class="form-group">
+                <label for="buyer-email">Email</label>
+                <input type="email" id="buyer-email" placeholder="you@example.com">
+            </div>
+
+            <div class="form-group">
+                <label for="ticket-qty">Number of Tickets</label>
+                <input type="number" id="ticket-qty" value="1" min="1" max="10">
+            </div>
+
+            <div class="form-group">
+                <label>Total Price</label>
+                <p id="total-price" class="total-price">$0.00</p>
+            </div>
+
+            <!-- STATUS MESSAGES -->
+            <div id="purchase-error" class="error-msg hidden">
+                Purchase failed. Please try again.
+            </div>
+            <div id="purchase-success" class="success-msg hidden">
+                🎉 Tickets booked! Redirecting...
+            </div>
+            <div id="purchase-loading" class="loading-msg hidden">
+                Processing your payment...
+            </div>
+
+            <button class="btn-primary full-width" onclick="handlePurchase()">
+                Confirm & Pay
+            </button>
+            <button class="btn-secondary full-width" onclick="window.location.href='index.html'">
+                Cancel
+            </button>
+        </div>
+
+    </main>
+
+    <script src="js/api.js"></script>
+    <script>
+
+        // Load logged in user
+        const user = JSON.parse(sessionStorage.getItem("user"));
+        if (user) {
+            document.getElementById("nav-user").textContent = `👤 ${user.name}`;
+            document.getElementById("buyer-name").value = user.name || "";
+            document.getElementById("buyer-email").value = user.email || "";
+        }
+
+        // Load selected event from sessionStorage
+        const event = JSON.parse(sessionStorage.getItem("selectedEvent"));
+        if (event) {
+            document.getElementById("event-name").textContent = event.name;
+            document.getElementById("event-venue").textContent = `📍 ${event.venue}`;
+            document.getElementById("event-date").textContent = `📅 ${event.date}`;
+            document.getElementById("event-price").textContent = `From $${event.price} per ticket`;
+            updateTotal();
+        } else {
+            // No event selected, send back to homepage
+            window.location.href = "index.html";
+        }
+
+        // Update total price when quantity changes
+        document.getElementById("ticket-qty").addEventListener("input", updateTotal);
+
+        function updateTotal() {
+            const qty = parseInt(document.getElementById("ticket-qty").value) || 1;
+            const price = parseFloat(event.price) || 0;
+            document.getElementById("total-price").textContent = `$${(qty * price).toFixed(2)}`;
+        }
+
+        // PURCHASE — calls POST /purchase/checkout
+        async function handlePurchase() {
+            const name = document.getElementById("buyer-name").value.trim();
+            const email = document.getElementById("buyer-email").value.trim();
+            const qty = parseInt(document.getElementById("ticket-qty").value);
+
+            if (!name || !email || !qty) return;
+
+            // Check user is logged in
+            if (!user) {
+                window.location.href = "login.html";
+                return;
+            }
+
+            document.getElementById("purchase-loading").classList.remove("hidden");
+            document.getElementById("purchase-error").classList.add("hidden");
+
+            try {
+                const data = await buyTicket({
+                    userId: user.userId,
+                    eventId: event.eventId,
+                    quantity: qty,
+                    name,
+                    email
+                });
+
+                document.getElementById("purchase-loading").classList.add("hidden");
+
+                if (data && data.purchaseId) {
+                    // Save purchase for status tracking
+                    sessionStorage.setItem("lastPurchase", JSON.stringify(data));
+                    document.getElementById("purchase-success").classList.remove("hidden");
+                    setTimeout(() => {
+                        window.location.href = "request-refund.html";
+                    }, 2000);
+                } else {
+                    document.getElementById("purchase-error").classList.remove("hidden");
+                }
+
+            } catch (err) {
+                document.getElementById("purchase-loading").classList.add("hidden");
+                document.getElementById("purchase-error").classList.remove("hidden");
+            }
+        }
+
+    </script>
+
+</body>
+</html>
