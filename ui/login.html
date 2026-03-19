@@ -32,7 +32,7 @@
                 <div class="auth-features">
                     <div class="auth-feature">
                         <div class="auth-feature-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M9 19V6l12-3v13M9 19c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm12-3c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2z"/>
                             </svg>
                         </div>
@@ -40,7 +40,7 @@
                     </div>
                     <div class="auth-feature">
                         <div class="auth-feature-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
                                 <line x1="1" y1="10" x2="23" y2="10"/>
                             </svg>
@@ -49,7 +49,7 @@
                     </div>
                     <div class="auth-feature">
                         <div class="auth-feature-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                                 <circle cx="12" cy="7" r="4"/>
                             </svg>
@@ -60,81 +60,89 @@
             </div>
         </div>
 
-        <!-- RIGHT PANEL — FORM SWITCHER -->
+        <!-- RIGHT PANEL -->
         <div class="auth-right">
+            <div class="auth-right-inner">
 
-            <!-- TAB SWITCHER -->
-            <div class="auth-tabs">
-                <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Login</button>
-                <button class="auth-tab" id="tab-register" onclick="switchTab('register')">Register</button>
+                <!-- TABS — always visible -->
+                <div class="auth-tabs">
+                    <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Login</button>
+                    <button class="auth-tab" id="tab-register" onclick="switchTab('register')">Register</button>
+                </div>
+
+                <!-- LOGIN PANEL -->
+                <div id="panel-login" class="auth-form-wrap">
+                    <div class="auth-form-header">
+                        <h2>Welcome Back</h2>
+                        <p>Enter your User ID to continue</p>
+                    </div>
+                    <div class="auth-divider"></div>
+                    <div class="form-group">
+                        <label for="login-id">User ID</label>
+                        <input type="text" id="login-id" placeholder="e.g. U001">
+                    </div>
+                    <div id="login-error" class="error-msg hidden">
+                        User not found. Please check your ID or register.
+                    </div>
+                    <button class="btn-primary full-width" onclick="handleLogin()">Login</button>
+                    <p class="auth-switch">
+                        Don't have an account?
+                        <button class="auth-switch-btn" onclick="switchTab('register')">Register here</button>
+                    </p>
+                </div>
+
+                <!-- REGISTER PANEL — hidden by default -->
+                <div id="panel-register" class="auth-form-wrap hidden">
+                    <div class="auth-form-header">
+                        <h2>Create Account</h2>
+                        <p>Register as a fan or event manager</p>
+                    </div>
+                    <div class="auth-divider"></div>
+                    <div class="form-group">
+                        <label for="reg-name">Full Name</label>
+                        <input type="text" id="reg-name" placeholder="Your full name">
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-email">Email</label>
+                        <input type="email" id="reg-email" placeholder="you@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-role">I am a</label>
+                        <select id="reg-role">
+                            <option value="fan">Fan</option>
+                            <option value="manager">Event Manager</option>
+                        </select>
+                    </div>
+                    <div id="register-error" class="error-msg hidden">
+                        Registration failed. Please try again.
+                    </div>
+                    <div id="register-success" class="success-msg hidden">
+                        Account created! Redirecting...
+                    </div>
+                    <button class="btn-primary full-width" onclick="handleRegister()">Create Account</button>
+                    <p class="auth-switch">
+                        Already have an account?
+                        <button class="auth-switch-btn" onclick="switchTab('login')">Login here</button>
+                    </p>
+                </div>
+
             </div>
-
-            <!-- LOGIN PANEL -->
-            <div id="panel-login" class="auth-form-wrap">
-                <div class="auth-form-header">
-                    <h2>Welcome Back</h2>
-                    <p>Enter your User ID to continue</p>
-                </div>
-                <div class="auth-divider"></div>
-                <div class="form-group">
-                    <label for="login-id">User ID</label>
-                    <input type="text" id="login-id" placeholder="e.g. U001">
-                </div>
-                <div id="login-error" class="error-msg hidden">
-                    User not found. Please check your ID or register.
-                </div>
-                <button class="btn-primary full-width" onclick="handleLogin()">Login</button>
-                <p class="auth-switch">
-                    Don't have an account?
-                    <button class="auth-switch-btn" onclick="switchTab('register')">Register here</button>
-                </p>
-            </div>
-
-            <!-- REGISTER PANEL -->
-            <div id="panel-register" class="auth-form-wrap hidden">
-                <div class="auth-form-header">
-                    <h2>Create Account</h2>
-                    <p>Register as a fan or event manager</p>
-                </div>
-                <div class="auth-divider"></div>
-                <div class="form-group">
-                    <label for="reg-name">Full Name</label>
-                    <input type="text" id="reg-name" placeholder="Your full name">
-                </div>
-                <div class="form-group">
-                    <label for="reg-email">Email</label>
-                    <input type="email" id="reg-email" placeholder="you@example.com">
-                </div>
-                <div class="form-group">
-                    <label for="reg-role">I am a</label>
-                    <select id="reg-role">
-                        <option value="fan">Fan</option>
-                        <option value="manager">Event Manager</option>
-                    </select>
-                </div>
-                <div id="register-error" class="error-msg hidden">
-                    Registration failed. Please try again.
-                </div>
-                <div id="register-success" class="success-msg hidden">
-                    Account created! Redirecting...
-                </div>
-                <button class="btn-primary full-width" onclick="handleRegister()">Create Account</button>
-                <p class="auth-switch">
-                    Already have an account?
-                    <button class="auth-switch-btn" onclick="switchTab('login')">Login here</button>
-                </p>
-            </div>
-
         </div>
     </main>
 
     <script src="js/api.js"></script>
     <script>
+
         function switchTab(tab) {
-            // Panels
-            document.getElementById("panel-login").classList.toggle("hidden", tab !== "login");
-            document.getElementById("panel-register").classList.toggle("hidden", tab !== "register");
-            // Tabs
+            // Show/hide panels
+            if (tab === 'login') {
+                document.getElementById("panel-login").style.display = "flex";
+                document.getElementById("panel-register").style.display = "none";
+            } else {
+                document.getElementById("panel-login").style.display = "none";
+                document.getElementById("panel-register").style.display = "flex";
+            }
+            // Update tab styles
             document.getElementById("tab-login").classList.toggle("active", tab === "login");
             document.getElementById("tab-register").classList.toggle("active", tab === "register");
         }
@@ -173,6 +181,7 @@
                 document.getElementById("register-error").classList.remove("hidden");
             }
         }
+
     </script>
 
 </body>
