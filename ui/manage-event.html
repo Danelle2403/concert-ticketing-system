@@ -1,1 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concert Ticketing | Manage Events</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
 
+    <!-- NAVBAR -->
+    <nav class="navbar">
+        <div class="nav-brand">🎵 ConcertHub</div>
+        <div class="nav-links">
+            <a href="index.html">Browse Events</a>
+            <a href="manage-event.html" class="active">Manage Events</a>
+            <span id="nav-user"></span>
+        </div>
+    </nav>
+
+    <main class="container">
+
+        <!-- NOT LOGGED IN / NOT MANAGER -->
+        <div id="access-denied" class="hidden">
+            <p>⛔ Access denied. This page is for event managers only.</p>
+            <a href="login.html">Login as a manager</a>
+        </div>
+
+        <!-- MANAGER VIEW -->
+        <div id="manager-view" class="hidden">
+
+            <h2>My Events</h2>
+            <div id="loading" class="loading-msg">Loading your events...</div>
+            <div id="events-list"></div>
+            <div id="no-events" class="hidden">
+                <p>You have no events yet.</p>
+            </div>
+            <div id="error-msg" class="error-msg hidden">
+                Failed to load events. Please try again.
+            </div>
+
+        </div>
+    </main>
+
+    <!-- EDIT EVENT MODAL -->
+    <div id="edit-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Edit Event</h3>
+
+            <div class="form-group">
+                <label for="edit-name">Event Name</label>
+                <input type="text" id="edit-name">
+            </div>
+            <div class="form-group">
+                <label for="edit-venue">Venue</label>
+                <input type="text" id="edit-venue">
+            </div>
+            <div class="form-group">
+                <label for="edit-date">Date</label>
+                <input type="date" id="edit-date">
+            </div>
+            <div class="form-group">
+                <label for="edit-price">Price ($)</label>
+                <input type="number" id="edit-price" min="0">
+            </div>
+
+            <div id="edit-success" class="success-msg hidden">✅ Event updated successfully!</div>
+            <div id="edit-error" class="error-msg hidden">Update failed. Please try again.</div>
+            <div id="edit-loading" class="loading-msg hidden">Saving changes...</div>
+
+            <div class="modal-buttons">
+                <button class="btn-primary" onclick="confirmEdit()">Save Changes</button>
+                <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CANCEL EVENT MODAL -->
+    <div id="cancel-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Cancel Event</h3>
+            <p id="cancel-modal-message">Are you sure you want to cancel this event?</p>
+            <p class="warning-text">
+                ⚠️ This will notify all ticket holders and trigger automatic refunds.
+            </p>
+
+            <div id="cancel-success" class="success-msg hidden">✅ Event cancelled. Refunds initiated!</div>
+            <div id="cancel-error" class="error-msg hidden">Cancellation failed. Please try again.</div>
+            <div id="cancel-loading" class="loading-msg hidden">Cancelling event...</div>
+
+            <div class="modal-buttons">
+                <button class="btn-danger" id="confirm-cancel-btn" onclick="confirmCancel()">
+                    Yes, Cancel Event
+                </button>
+                <button class="btn-secondary" onclick="closeCancelModal()">Go Back</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+
+        const user = JSON.parse(sessionStorage.getItem("user"));
+        let selectedEventId = null;
+
+        // Guard — managers only
+        if (!user || user.role !== "manager") {
+            document.getElementById("access-denied").classList.remove("hidden");
+        } else {
+            document.getElementById("nav-user").textContent = `👤 ${user.name}`;
+            document.getElementById("manager-view").classList.remove("hidden");
+            loadManagedEvents();
+        }
+
+        // Load events this manager owns — calls GET /user/managing
+        async function loadManagedEvents() {
+            try {
+                const data = await getManagingEvents(user.userId);
+                document.getElementById("loading").classList.add("hidden");
+
+                if (!data.events || data.events.length === 0) {
+                    document.getElementById("no-events").classList.remove("hidden");
+                    return;
+                }
+
+                const list = document.getElementById("events-list");
+                data.events.forEach(event => {
+                    const card = document.createElement("div");
+                    card.className = "event-manage-card";
+                    card.innerHTML = `
+                        <div class="event-info">
+                            <h3>${event.name}</h3>
+                            <p>📍 ${event.venue}</p>
+                            <p>📅 ${event.date}</p>
+                            <p>💰 $${event.price}</p>
+                            <span class="ticket-status status-${event.status}">
+                                ${event.status}
+                            </span>
+                        </div>
+                        <div class="ticket-actions">
+                            <button 
+                                class="btn-primary"
+                                onclick="openEditModal(${JSON.stringify(event).replace(/"/g, '&quot;')})"
+                                ${event.status === 'cancelled' ? 'disabled' : ''}
+                            >
+                                ✏️ Edit
+                            </button>
+                            <button 
+                                class="btn-danger"
+                                onclick="openCancelModal('${event.eventId}', '${event.name}')"
+                                ${event.status === 'cancelled' ? 'disabled' : ''}
+                            >
+                                ❌ Cancel Event
+                            </button>
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+
+            } catch (err) {
+                document.getElementById("loading").classList.add("hidden");
+                document.getElementById("error-msg").classList.remove("hidden");
+            }
+        }
+
+        // ── EDIT MODAL ────────────────────────────────────────
+        function openEditModal(event) {
+            selectedEventId = event.eventId;
+            document.getElementById("edit-name").value = event.name;
+            document.getElementById("edit-venue").value = event.venue;
+            document.getElementById("edit-date").value = event.date;
+            document.getElementById("edit-price").value = event.price;
+            document.getElementById("edit-success").classList.add("hidden");
+            document.getElementById("edit-error").classList.add("hidden");
+            document.getElementById("edit-modal").classList.remove("hidden");
+        }
+
+        function closeEditModal() {
+            document.getElementById("edit-modal").classList.add("hidden");
+            selectedEventId = null;
+        }
+
+        // EDIT — calls PUT /events/eventId/edit via Edit Event Composite
+        async function confirmEdit() {
+            if (!selectedEventId) return;
+
+            const updatedData = {
+                name: document.getElementById("edit-name").value.trim(),
+                venue: document.getElementById("edit-venue").value.trim(),
+                date: document.getElementById("edit-date").value,
+                price: parseFloat(document.getElementById("edit-price").value)
+            };
+
+            document.getElementById("edit-loading").classList.remove("hidden");
+
+            try {
+                const data = await updateEvent(selectedEventId, updatedData);
+                document.getElementById("edit-loading").classList.add("hidden");
+
+                if (data && data.eventId) {
+                    document.getElementById("edit-success").classList.remove("hidden");
+                    setTimeout(() => {
+                        closeEditModal();
+                        location.reload();
+                    }, 2000);
+                } else {
+                    document.getElementById("edit-error").classList.remove("hidden");
+                }
+
+            } catch (err) {
+                document.getElementById("edit-loading").classList.add("hidden");
+                document.getElementById("edit-error").classList.remove("hidden");
+            }
+        }
+
+        // ── CANCEL MODAL ──────────────────────────────────────
+        function openCancelModal(eventId, eventName) {
+            selectedEventId = eventId;
+            document.getElementById("cancel-modal-message").textContent =
+                `Are you sure you want to cancel "${eventName}"?`;
+            document.getElementById("cancel-success").classList.add("hidden");
+            document.getElementById("cancel-error").classList.add("hidden");
+            document.getElementById("cancel-loading").classList.add("hidden");
+            document.getElementById("confirm-cancel-btn").disabled = false;
+            document.getElementById("cancel-modal").classList.remove("hidden");
+        }
+
+        function closeCancelModal() {
+            document.getElementById("cancel-modal").classList.add("hidden");
+            selectedEventId = null;
+        }
+
+        // CANCEL — calls POST /events/eventId/cancel via Edit Event Composite
+        async function confirmCancel() {
+            if (!selectedEventId) return;
+
+            document.getElementById("cancel-loading").classList.remove("hidden");
+            document.getElementById("confirm-cancel-btn").disabled = true;
+
+            try {
+                const data = await cancelEvent(selectedEventId);
+                document.getElementById("cancel-loading").classList.add("hidden");
+
+                if (data && data.eventId) {
+                    document.getElementById("cancel-success").classList.remove("hidden");
+                    setTimeout(() => {
+                        closeCancelModal();
+                        location.reload();
+                    }, 2000);
+                } else {
+                    document.getElementById("cancel-error").classList.remove("hidden");
+                    document.getElementById("confirm-cancel-btn").disabled = false;
+                }
+
+            } catch (err) {
+                document.getElementById("cancel-loading").classList.add("hidden");
+                document.getElementById("cancel-error").classList.remove("hidden");
+                document.getElementById("confirm-cancel-btn").disabled = false;
+            }
+        }
+
+    </script>
+
+</body>
+</html>
