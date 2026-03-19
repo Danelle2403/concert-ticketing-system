@@ -1528,3 +1528,18 @@ css/* ── AUTH TABS ───────────────────
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
+/* ── AUTH RIGHT INNER ────────────────────────────────────── */
+.auth-right-inner {
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.auth-form-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+}
