@@ -9,6 +9,32 @@
 </head>
 <body>
 
+    <!-- TICKER -->
+    <div class="ticker-wrap">
+        <div class="ticker-track">
+            <span>New Shows Added Weekly</span>
+            <span class="ticker-dot">·</span>
+            <span>The Midnight — 15 Aug 2026</span>
+            <span class="ticker-dot">·</span>
+            <span>Neon Bloom — 22 Sep 2026</span>
+            <span class="ticker-dot">·</span>
+            <span>Wave Artist — 10 Oct 2026</span>
+            <span class="ticker-dot">·</span>
+            <span>Soul Remedy — 5 Nov 2026</span>
+            <span class="ticker-dot">·</span>
+            <span>New Shows Added Weekly</span>
+            <span class="ticker-dot">·</span>
+            <span>The Midnight — 15 Aug 2026</span>
+            <span class="ticker-dot">·</span>
+            <span>Neon Bloom — 22 Sep 2026</span>
+            <span class="ticker-dot">·</span>
+            <span>Wave Artist — 10 Oct 2026</span>
+            <span class="ticker-dot">·</span>
+            <span>Soul Remedy — 5 Nov 2026</span>
+            <span class="ticker-dot">·</span>
+        </div>
+    </div>
+
     <!-- NAVBAR -->
     <nav class="navbar">
         <div class="nav-brand">ConcertHub</div>
@@ -28,18 +54,21 @@
 
     <!-- FEATURED CONCERT HERO -->
     <section class="hero-featured">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
         <div class="hero-overlay"></div>
         <div class="hero-content">
-            <span class="hero-label">Featured Event</span>
-            <h1 class="hero-title">The Midnight<br>World Tour 2026</h1>
-            <div class="hero-meta">
+            <span class="hero-label reveal">Featured Event</span>
+            <h1 class="hero-title reveal-delay-1">The Midnight<br>World Tour 2026</h1>
+            <div class="hero-meta reveal-delay-2">
                 <span>Marina Bay Sands, Singapore</span>
                 <span class="dot">·</span>
                 <span>15 Aug 2026</span>
                 <span class="dot">·</span>
                 <span>From $88</span>
             </div>
-            <div class="hero-actions">
+            <div class="hero-actions reveal-delay-3">
                 <button class="btn-primary" onclick="scrollToEvents()">Get Tickets</button>
                 <button class="btn-ghost">Learn More</button>
             </div>
@@ -49,22 +78,22 @@
 
     <!-- STATS BAR -->
     <section class="stats-bar">
-        <div class="stat">
+        <div class="stat animate-on-scroll">
             <span class="stat-number">120+</span>
             <span class="stat-label">Events This Year</span>
         </div>
         <div class="stat-divider"></div>
-        <div class="stat">
+        <div class="stat animate-on-scroll">
             <span class="stat-number">80+</span>
             <span class="stat-label">Artists</span>
         </div>
         <div class="stat-divider"></div>
-        <div class="stat">
+        <div class="stat animate-on-scroll">
             <span class="stat-number">12</span>
             <span class="stat-label">Venues</span>
         </div>
         <div class="stat-divider"></div>
-        <div class="stat">
+        <div class="stat animate-on-scroll">
             <span class="stat-number">50k+</span>
             <span class="stat-label">Tickets Sold</span>
         </div>
@@ -72,32 +101,32 @@
 
     <!-- BROWSE BY GENRE -->
     <section class="section" id="genres">
-        <div class="section-header">
+        <div class="section-header animate-on-scroll">
             <h2 class="section-title">Browse by Genre</h2>
             <a href="#" class="section-link">View all</a>
         </div>
         <div class="genre-grid">
-            <div class="genre-card" style="--genre-color: #7c3aed;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #7b2d8b;">
                 <span class="genre-name">Pop</span>
                 <span class="genre-count">24 events</span>
             </div>
-            <div class="genre-card" style="--genre-color: #db2777;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #d4709a;">
                 <span class="genre-name">R&B</span>
                 <span class="genre-count">18 events</span>
             </div>
-            <div class="genre-card" style="--genre-color: #0891b2;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #3d0060;">
                 <span class="genre-name">Electronic</span>
                 <span class="genre-count">31 events</span>
             </div>
-            <div class="genre-card" style="--genre-color: #d97706;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #f2c4d0;">
                 <span class="genre-name">Hip-Hop</span>
                 <span class="genre-count">22 events</span>
             </div>
-            <div class="genre-card" style="--genre-color: #059669;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #7b2d8b;">
                 <span class="genre-name">Rock</span>
                 <span class="genre-count">15 events</span>
             </div>
-            <div class="genre-card" style="--genre-color: #dc2626;">
+            <div class="genre-card animate-on-scroll" style="--genre-color: #d4709a;">
                 <span class="genre-name">Jazz</span>
                 <span class="genre-count">9 events</span>
             </div>
@@ -106,7 +135,7 @@
 
     <!-- UPCOMING EVENTS -->
     <section class="section" id="upcoming">
-        <div class="section-header">
+        <div class="section-header animate-on-scroll">
             <h2 class="section-title">Upcoming Events</h2>
             <div class="filter-tabs">
                 <button class="filter-tab active" onclick="filterEvents('all', this)">All</button>
@@ -115,18 +144,14 @@
                 <button class="filter-tab" onclick="filterEvents('hiphop', this)">Hip-Hop</button>
             </div>
         </div>
-
         <div id="events-loading" class="loading-state">
             <div class="loading-bar"></div>
             <p>Loading events...</p>
         </div>
-
         <div id="events-grid" class="events-grid"></div>
-
         <div id="events-error" class="error-state hidden">
             Unable to load events at this time. Please try again later.
         </div>
-
         <div id="events-empty" class="empty-state hidden">
             No events found. Check back soon.
         </div>
@@ -134,28 +159,28 @@
 
     <!-- FEATURED ARTISTS -->
     <section class="section section-dark" id="artists">
-        <div class="section-header">
+        <div class="section-header animate-on-scroll">
             <h2 class="section-title">Featured Artists</h2>
             <a href="#" class="section-link">View all</a>
         </div>
         <div class="artists-grid">
-            <div class="artist-card">
-                <div class="artist-avatar" style="background: linear-gradient(135deg, #7c3aed, #db2777);">TM</div>
+            <div class="artist-card animate-on-scroll">
+                <div class="artist-avatar" style="background: linear-gradient(135deg, #3d0060, #d4709a);">TM</div>
                 <span class="artist-name">The Midnight</span>
                 <span class="artist-genre">Synthwave</span>
             </div>
-            <div class="artist-card">
-                <div class="artist-avatar" style="background: linear-gradient(135deg, #0891b2, #7c3aed);">WA</div>
+            <div class="artist-card animate-on-scroll">
+                <div class="artist-avatar" style="background: linear-gradient(135deg, #7b2d8b, #3d0060);">WA</div>
                 <span class="artist-name">Wave Artist</span>
                 <span class="artist-genre">Electronic</span>
             </div>
-            <div class="artist-card">
-                <div class="artist-avatar" style="background: linear-gradient(135deg, #d97706, #dc2626);">NB</div>
+            <div class="artist-card animate-on-scroll">
+                <div class="artist-avatar" style="background: linear-gradient(135deg, #d4709a, #7b2d8b);">NB</div>
                 <span class="artist-name">Neon Bloom</span>
                 <span class="artist-genre">Pop</span>
             </div>
-            <div class="artist-card">
-                <div class="artist-avatar" style="background: linear-gradient(135deg, #059669, #0891b2);">SR</div>
+            <div class="artist-card animate-on-scroll">
+                <div class="artist-avatar" style="background: linear-gradient(135deg, #f2c4d0, #d4709a);">SR</div>
                 <span class="artist-name">Soul Remedy</span>
                 <span class="artist-genre">R&B</span>
             </div>
@@ -164,7 +189,7 @@
 
     <!-- NEWSLETTER -->
     <section class="section section-newsletter">
-        <div class="newsletter-content">
+        <div class="newsletter-content animate-on-scroll">
             <h2 class="section-title">Never Miss a Show</h2>
             <p class="newsletter-subtitle">Get notified when new events drop in your city.</p>
             <div class="newsletter-form">
@@ -212,7 +237,7 @@
 
     <!-- EVENT CARD TEMPLATE -->
     <template id="event-card-template">
-        <div class="event-card">
+        <div class="event-card animate-on-scroll">
             <div class="event-card-header">
                 <span class="event-card-date"></span>
                 <span class="event-card-genre"></span>
@@ -242,6 +267,17 @@
         function scrollToEvents() {
             document.getElementById("upcoming").scrollIntoView({ behavior: "smooth" });
         }
+
+        // Scroll animation observer
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add("in-view");
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll(".animate-on-scroll").forEach(el => observer.observe(el));
 
         // Filter tabs
         function filterEvents(genre, btn) {
@@ -290,6 +326,9 @@
                     });
                     grid.appendChild(card);
                 });
+
+                // Observe newly added cards
+                document.querySelectorAll(".animate-on-scroll:not(.in-view)").forEach(el => observer.observe(el));
 
             } catch (err) {
                 loading.classList.add("hidden");
