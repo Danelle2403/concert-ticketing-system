@@ -38,7 +38,7 @@ docker-compose up --build
 ### 3. Access the application
 | Service | URL |
 |---|---|
-| UI | http://localhost:80 |
+| UI | http://localhost:8080 |
 | User Service | http://localhost:5001 |
 | [Other services added by teammates] | http://localhost:500X |
 
