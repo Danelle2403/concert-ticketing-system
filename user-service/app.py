@@ -103,7 +103,7 @@ def get_user_events():
         db = get_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute(
-            "SELECT * FROM user_tickets WHERE userId = %s",
+            "SELECT * FROM user_tickets WHERE id = %s",
             (userId,)
         )
         events = cursor.fetchall()
