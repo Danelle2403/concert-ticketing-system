@@ -42,7 +42,7 @@ def get_user(userId):
     try:
         db = get_db()
         cursor = db.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM users WHERE userId = %s", (userId,))
+        cursor.execute("SELECT * FROM users WHERE id = %s", (userId,))
         user = cursor.fetchone()
         cursor.close()
         db.close()
