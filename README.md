@@ -12,10 +12,12 @@ The system supports 3 main scenarios:
 |---|---|
 | UI | HTML, CSS, JavaScript |
 | Microservices | Python, Flask |
+| API Gateway | Kong |
 | Messaging | RabbitMQ (AMQP) |
-| Database | MySQL |
-| External Services | Stripe (Payments), SendGrid (Notifications) |
+| Database | MySQL (User Service), Supabase/PostgreSQL (Ticket Service) |
+| External Services | Stripe (Payments), SendGrid (Notifications), OutSystems (Order Service) |
 | Deployment | Docker, Docker Compose |
+| Version Control | GitHub |
 
 ## Prerequisites
 Make sure you have the following installed before running:
