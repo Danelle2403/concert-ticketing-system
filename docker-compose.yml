@@ -12,6 +12,28 @@ services:
     networks:
       - ticketing-net
 
+  # ── KONG API GATEWAY ─────────────────────────────────────────
+  kong:
+    image: kong:3.4
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+    volumes:
+      - ./kong:/kong/declarative
+    ports:
+      - "8000:8000"   # API Gateway — your UI calls this
+      - "8001:8001"   # Kong Admin API
+    networks:
+      - ticketing-net
+    depends_on:
+      - user-service
+
   # ── USER SERVICE ─────────────────────────────────────────────
   user-service:
     build: ./user-service
@@ -49,8 +71,8 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     ports:
-      - "5672:5672"    # AMQP port for services
-      - "15672:15672"  # Management UI
+      - "5672:5672"
+      - "15672:15672"
     environment:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
@@ -70,10 +92,38 @@ services:
   #   networks:
   #     - ticketing-net
 
-  # order-service:
-  #   build: ./order-service
+  # event-service:
+  #   build: ./event-service
   #   ports:
   #     - "5003:5000"
+  #   networks:
+  #     - ticketing-net
+
+  # seat-inventory-service:
+  #   build: ./seat-inventory-service
+  #   ports:
+  #     - "5004:5000"
+  #   networks:
+  #     - ticketing-net
+
+  # purchase-composite:
+  #   build: ./purchase-composite
+  #   ports:
+  #     - "5010:5000"
+  #   networks:
+  #     - ticketing-net
+
+  # refund-composite:
+  #   build: ./refund-composite
+  #   ports:
+  #     - "5011:5000"
+  #   networks:
+  #     - ticketing-net
+
+  # edit-event-composite:
+  #   build: ./edit-event-composite
+  #   ports:
+  #     - "5012:5000"
   #   networks:
   #     - ticketing-net
 
@@ -85,4 +135,3 @@ volumes:
 networks:
   ticketing-net:
     driver: bridge
-
