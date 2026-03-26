@@ -1,10 +1,12 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
+import json
 import uuid
 import sqlite3
 from datetime import datetime, timezone
 import requests
+import pika
 
 app = Flask(__name__)
 CORS(app)
@@ -12,8 +14,13 @@ CORS(app)
 USER_SERVICE_URL = os.environ.get("USER_SERVICE_URL", "http://user-service:5000")
 EVENT_SERVICE_URL = os.environ.get("EVENT_SERVICE_URL", "http://event-service:5000")
 SEAT_INVENTORY_URL = os.environ.get("SEAT_INVENTORY_URL", "http://seat-inventory:5000")
-TICKET_SERVICE_URL = os.environ.get("TICKET_SERVICE_URL", "https://ticketatomic-production.up.railway.app")
+TICKET_SERVICE_URL = os.environ.get("TICKET_SERVICE_URL", "http://ticket-service:5000")
 DB_PATH = os.environ.get("PURCHASE_DB_PATH", "/data/purchase.db")
+RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "rabbitmq")
+RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", "5672"))
+RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "guest")
+RABBITMQ_PASS = os.environ.get("RABBITMQ_PASS", "guest")
+EVENT_EXCHANGE = os.environ.get("EVENT_EXCHANGE", "ticketing.events")
 
 
 def get_db():
@@ -68,6 +75,29 @@ def req_json(method, url, payload=None, timeout=8):
     except Exception:
         body = {"raw": res.text}
     return res.status_code, body
+
+
+def publish_event(routing_key, payload):
+    try:
+        credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
+        parameters = pika.ConnectionParameters(
+            host=RABBITMQ_HOST,
+            port=RABBITMQ_PORT,
+            credentials=credentials,
+            heartbeat=30,
+        )
+        connection = pika.BlockingConnection(parameters)
+        channel = connection.channel()
+        channel.exchange_declare(exchange=EVENT_EXCHANGE, exchange_type="topic", durable=True)
+        channel.basic_publish(
+            exchange=EVENT_EXCHANGE,
+            routing_key=routing_key,
+            body=json.dumps(payload),
+            properties=pika.BasicProperties(content_type="application/json", delivery_mode=2),
+        )
+        connection.close()
+    except Exception as e:
+        print(f"[purchase-composite] publish failed for {routing_key}: {e}")
 
 
 def issue_ticket(event_id):
@@ -189,6 +219,26 @@ def checkout():
             )
 
         conn.commit()
+
+        buyer_email = data.get("email") or user.get("email")
+        buyer_name = data.get("name") or user.get("name")
+        for item in created:
+            publish_event(
+                "ticket.purchased",
+                {
+                    "purchaseId": purchase_id,
+                    "ticketId": item["ticketId"],
+                    "userId": int(user_id),
+                    "email": buyer_email,
+                    "name": buyer_name,
+                    "eventId": event_id,
+                    "eventName": event.get("name"),
+                    "venue": event.get("venue"),
+                    "date": event.get("date"),
+                    "seatCategory": seat_category,
+                    "paymentId": payment_id,
+                },
+            )
 
         return (
             jsonify(
