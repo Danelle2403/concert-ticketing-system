@@ -24,7 +24,7 @@ services:
         strip_path: false
 
   - name: ticket-service
-    url: http://ticket-service:5000
+    url: https://ticketatomic-production.up.railway.app
     routes:
       - name: ticket-routes
         paths:
