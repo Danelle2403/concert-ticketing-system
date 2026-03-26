@@ -2,11 +2,13 @@ _format_version: "2.1"
 _transform: true
 
 services:
+
   - name: user-service
     url: http://user-service:5000
     routes:
       - name: user-routes
         paths:
+          - /health
           - /user
           - /users
         strip_path: false
@@ -48,5 +50,6 @@ services:
     routes:
       - name: edit-event-routes
         paths:
-          - /events
+          - /events/edit
+          - /events/cancel
         strip_path: false
