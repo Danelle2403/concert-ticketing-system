@@ -1,0 +1,47 @@
+{
+  "name": "event-service",
+  "version": "1.0.0",
+  "description": "Event Service for the concert ticketing platform",
+  "main": "dist/src/server.js",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc && copyfiles -u 1 src/db/schema.sql dist",
+    "start": "node dist/src/server.js",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:prod": "node dist/src/db/migrate.js",
+    "test": "jest --runInBand"
+  },
+  "keywords": [
+    "express",
+    "typescript",
+    "postgresql",
+    "microservice"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.3",
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.11.11",
+    "@types/supertest": "^6.0.3",
+    "@types/swagger-ui-express": "^4.1.8",
+    "copyfiles": "^2.4.1",
+    "jest": "^29.7.0",
+    "pg-mem": "^3.0.5",
+    "supertest": "^7.1.0",
+    "ts-jest": "^29.2.6",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
