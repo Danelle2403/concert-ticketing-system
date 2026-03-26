@@ -1,0 +1,52 @@
+_format_version: "2.1"
+_transform: true
+
+services:
+  - name: user-service
+    url: http://user-service:5000
+    routes:
+      - name: user-routes
+        paths:
+          - /user
+          - /users
+        strip_path: false
+
+  - name: event-service
+    url: http://event-service:5000
+    routes:
+      - name: event-routes
+        paths:
+          - /events
+        strip_path: false
+
+  - name: ticket-service
+    url: http://ticket-service:5000
+    routes:
+      - name: ticket-routes
+        paths:
+          - /tickets
+        strip_path: false
+
+  - name: purchase-composite
+    url: http://purchase-composite:5000
+    routes:
+      - name: purchase-routes
+        paths:
+          - /purchase
+        strip_path: false
+
+  - name: refund-composite
+    url: http://refund-composite:5000
+    routes:
+      - name: refund-routes
+        paths:
+          - /refunds
+        strip_path: false
+
+  - name: edit-event-composite
+    url: http://edit-event-composite:5000
+    routes:
+      - name: edit-event-routes
+        paths:
+          - /events
+        strip_path: false
