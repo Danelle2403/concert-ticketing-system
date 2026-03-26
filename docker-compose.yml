@@ -45,6 +45,41 @@ services:
     networks:
       - ticketing-net
 
+  # ── SEAT INVENTORY SERVICE ────────────────────────────────────
+  seat-inventory:
+    build: ./seat-inventory
+    ports:
+      - "5004:5000"
+    environment:
+      - DB_HOST=seat-inventory-db
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=seat_inventory_db
+      - DEFAULT_HOLD_TTL_SECONDS=300
+      - MAX_HOLD_TTL_SECONDS=1800
+    depends_on:
+      seat-inventory-db:
+        condition: service_healthy
+    networks:
+      - ticketing-net
+
+  # ── SEAT INVENTORY DATABASE ───────────────────────────────────
+  seat-inventory-db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=seat_inventory_db
+    volumes:
+      - seat-inventory-db-data:/var/lib/mysql
+      - ./seat-inventory/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ticketing-net
+
   # ── RABBITMQ ─────────────────────────────────────────────────
   rabbitmq:
     image: rabbitmq:3-management
@@ -80,9 +115,9 @@ services:
 # ── VOLUMES ───────────────────────────────────────────────────
 volumes:
   user-db-data:
+  seat-inventory-db-data:
 
 # ── NETWORKS ──────────────────────────────────────────────────
 networks:
   ticketing-net:
     driver: bridge
-

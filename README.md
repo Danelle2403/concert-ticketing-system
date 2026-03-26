@@ -40,11 +40,17 @@ docker-compose up --build
 |---|---|
 | UI | http://localhost:8080 |
 | User Service | http://localhost:5001 |
+| Seat Inventory Service | http://localhost:5004 |
 | [Other services added by teammates] | http://localhost:500X |
 
 ### 4. Stop all services
 ```bash
 docker-compose down
+```
+
+### 5. Run Seat Inventory smoke tests
+```bash
+python3 seat-inventory/smoke_test.py
 ```
 
 ## Project Structure
@@ -62,6 +68,11 @@ concert-ticketing-system/
 │   ├── app.py
 │   ├── requirements.txt
 │   └── Dockerfile
+├── seat-inventory/            # Seat Inventory atomic microservice
+│   ├── app.py
+│   ├── init.sql
+│   ├── requirements.txt
+│   └── Dockerfile
 ├── docker-compose.yml
 └── README.md
 ```
@@ -75,6 +86,18 @@ concert-ticketing-system/
 | POST | /user/new | Register new user |
 | GET | /user/events | Get fan's purchased tickets |
 | GET | /user/managing | Get manager's events |
+
+## API Endpoints — Seat Inventory Service
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /health | Health check |
+| GET | /inventory | Get all inventory rows |
+| GET | /inventory/<eventId> | Get all seat categories for one event |
+| GET | /inventory/<eventId>/<seatCategory>?quantity=1 | Check availability for requested quantity |
+| POST | /inventory/hold | Hold seats atomically (`eventId`, `seatCategory`, `quantity`, optional `ttlSeconds`) |
+| POST | /inventory/confirm | Confirm a hold (`holdId`) |
+| POST | /inventory/release | Release a hold (`holdId`) and return seats (`allowConfirmedRelease=true` for refund/cancel) |
+| GET | /inventory/holds/<holdId> | Get hold status/details |
 
 ## Notes & Assumptions
 - The API Gateway runs on port 8000
