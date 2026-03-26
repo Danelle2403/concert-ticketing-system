@@ -19,10 +19,12 @@ services:
       - name: event-routes
         paths:
           - /events
+        methods:
+          - GET
         strip_path: false
 
   - name: ticket-service
-    url: http://ticket-service:5000
+    url: https://ticketatomic-production.up.railway.app
     routes:
       - name: ticket-routes
         paths:
@@ -50,6 +52,8 @@ services:
     routes:
       - name: edit-event-routes
         paths:
-          - /events/edit
-          - /events/cancel
+          - /events
+        methods:
+          - PUT
+          - POST
         strip_path: false

@@ -40,17 +40,31 @@ docker-compose up --build
 ### 3. Access the application
 | Service | URL |
 |---|---|
-| UI | http://localhost:8080 |
+| UI | http://localhost:8080/index.html |
+| Kong API Gateway (used by UI) | http://localhost:8000 |
 | User Service | http://localhost:5001 |
+| Event Service | http://localhost:5003 |
 | Seat Inventory Service | http://localhost:5004 |
-| [Other services added by teammates] | http://localhost:500X |
+| Purchase Composite | http://localhost:5010 |
+| Refund Composite | http://localhost:5011 |
+| Edit Event Composite | http://localhost:5012 |
+| RabbitMQ Dashboard | http://localhost:15672 |
 
-### 4. Stop all services
+### 4. Seed demo users/events
+```bash
+curl -X POST http://localhost:5001/user/seed
+```
+
+Default demo users:
+- Fan login `User ID = 1`
+- Manager login `User ID = 2`
+
+### 5. Stop all services
 ```bash
 docker-compose down
 ```
 
-### 5. Run Seat Inventory smoke tests
+### 6. Run Seat Inventory smoke tests
 ```bash
 python3 seat-inventory/smoke_test.py
 ```
@@ -75,6 +89,11 @@ concert-ticketing-system/
 │   ├── init.sql
 │   ├── requirements.txt
 │   └── Dockerfile
+├── event-service/             # Event atomic microservice
+├── purchase-composite/        # Scenario 1 orchestration
+├── refund-composite/          # Scenario 3 / ticket refund orchestration
+├── edit-event-composite/      # Scenario 2 orchestration
+├── kong/                      # Kong declarative routes
 ├── docker-compose.yml
 └── README.md
 ```
@@ -88,6 +107,45 @@ concert-ticketing-system/
 | POST | /user/new | Register new user |
 | GET | /user/events | Get fan's purchased tickets |
 | GET | /user/managing | Get manager's events |
+| POST | /user/seed | Seed demo users + manager events |
+| POST | /user/tickets/add | Internal ticket upsert used by composites |
+| GET | /user/ticket/<ticketId> | Internal ticket lookup |
+| POST | /user/ticket/<ticketId>/status | Internal ticket status update |
+| GET | /user/tickets/by-event/<eventId> | Internal event ticket lookup |
+| PUT | /user/managed/<eventId> | Internal managed-event update |
+| POST | /user/managed/<eventId>/cancel | Internal managed-event cancel |
+
+## API Endpoints — Event Service
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /health | Health check |
+| GET | /events | List events for browse page |
+| GET | /events/<eventId> | Get event details |
+| PUT | /events/<eventId>/edit | Edit event details |
+| POST | /events/<eventId>/cancel | Cancel event |
+
+## API Endpoints — Purchase Composite
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /health | Health check |
+| POST | /purchase/checkout | Buy ticket flow orchestration |
+| GET | /purchase/<purchaseId>/status | Get purchase status |
+| GET | /purchase/ticket/<ticketId> | Internal ticket mapping lookup |
+| POST | /purchase/ticket/<ticketId>/status | Internal ticket mapping status update |
+
+## API Endpoints — Refund Composite
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /health | Health check |
+| POST | /refunds/<ticketId> | Refund one ticket |
+| POST | /refunds/event/<eventId> | Refund all active tickets for an event |
+
+## API Endpoints — Edit Event Composite
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /health | Health check |
+| PUT | /events/<eventId>/edit | Scenario 2 edit orchestration |
+| POST | /events/<eventId>/cancel | Scenario 3 cancel orchestration |
 
 ## API Endpoints — Seat Inventory Service
 | Method | Endpoint | Description |

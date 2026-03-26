@@ -33,6 +33,10 @@ services:
       - ticketing-net
     depends_on:
       - user-service
+      - event-service
+      - purchase-composite
+      - refund-composite
+      - edit-event-composite
 
   # ── USER SERVICE ─────────────────────────────────────────────
   user-service:
@@ -102,6 +106,91 @@ services:
     networks:
       - ticketing-net
 
+  # ── EVENT SERVICE ────────────────────────────────────────────
+  event-service:
+    build: ./event-service
+    ports:
+      - "5003:5000"
+    environment:
+      - DB_HOST=event-db
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=event_db
+    depends_on:
+      event-db:
+        condition: service_healthy
+    networks:
+      - ticketing-net
+
+  # ── EVENT SERVICE DATABASE ───────────────────────────────────
+  event-db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=event_db
+    volumes:
+      - event-db-data:/var/lib/mysql
+      - ./event-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ticketing-net
+
+  # ── PURCHASE COMPOSITE ──────────────────────────────────────
+  purchase-composite:
+    build: ./purchase-composite
+    ports:
+      - "5010:5000"
+    environment:
+      - USER_SERVICE_URL=http://user-service:5000
+      - EVENT_SERVICE_URL=http://event-service:5000
+      - SEAT_INVENTORY_URL=http://seat-inventory:5000
+      - TICKET_SERVICE_URL=https://ticketatomic-production.up.railway.app
+      - PURCHASE_DB_PATH=/data/purchase.db
+    volumes:
+      - purchase-data:/data
+    depends_on:
+      - user-service
+      - event-service
+      - seat-inventory
+    networks:
+      - ticketing-net
+
+  # ── REFUND COMPOSITE ────────────────────────────────────────
+  refund-composite:
+    build: ./refund-composite
+    ports:
+      - "5011:5000"
+    environment:
+      - USER_SERVICE_URL=http://user-service:5000
+      - PURCHASE_SERVICE_URL=http://purchase-composite:5000
+      - SEAT_INVENTORY_URL=http://seat-inventory:5000
+    depends_on:
+      - user-service
+      - purchase-composite
+      - seat-inventory
+    networks:
+      - ticketing-net
+
+  # ── EDIT EVENT COMPOSITE ────────────────────────────────────
+  edit-event-composite:
+    build: ./edit-event-composite
+    ports:
+      - "5012:5000"
+    environment:
+      - EVENT_SERVICE_URL=http://event-service:5000
+      - USER_SERVICE_URL=http://user-service:5000
+      - REFUND_SERVICE_URL=http://refund-composite:5000
+    depends_on:
+      - event-service
+      - user-service
+      - refund-composite
+    networks:
+      - ticketing-net
+
   # ── RABBITMQ ─────────────────────────────────────────────────
   rabbitmq:
     image: rabbitmq:3-management
@@ -166,6 +255,8 @@ services:
 volumes:
   user-db-data:
   seat-inventory-db-data:
+  event-db-data:
+  purchase-data:
 
 # ── NETWORKS ──────────────────────────────────────────────────
 networks:
