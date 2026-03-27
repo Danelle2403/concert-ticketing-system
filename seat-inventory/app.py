@@ -83,6 +83,18 @@ def parse_positive_int(value, field_name):
     return parsed
 
 
+def parse_non_negative_int(value, field_name):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be an integer")
+
+    if parsed < 0:
+        raise ValueError(f"{field_name} must be >= 0")
+
+    return parsed
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "Seat Inventory Service is running"}), 200
@@ -184,6 +196,133 @@ def get_inventory_by_category(event_id, seat_category):
         row["requestedQuantity"] = quantity
         row["isAvailable"] = row["availableSeats"] >= quantity
         return jsonify(row), 200
+    except Exception as e:
+        if db:
+            db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if db:
+            db.close()
+
+
+@app.route("/inventory/admin/create", methods=["POST"])
+def create_inventory_for_event():
+    data = request.get_json(silent=True) or {}
+    event_id = str(data.get("eventId", "")).strip()
+    seat_categories = data.get("seatCategories")
+
+    if not event_id:
+        return jsonify({"error": "eventId is required"}), 400
+
+    if not isinstance(seat_categories, list) or not seat_categories:
+        return jsonify({"error": "seatCategories must be a non-empty array"}), 400
+
+    parsed_rows = []
+    seen_categories = set()
+
+    try:
+        for index, seat_row in enumerate(seat_categories):
+            if not isinstance(seat_row, dict):
+                raise ValueError(f"seatCategories[{index}] must be an object")
+
+            seat_category = str(seat_row.get("seatCategory", "")).strip()
+            if not seat_category:
+                raise ValueError(f"seatCategories[{index}].seatCategory is required")
+
+            normalized_category = seat_category.upper()
+            if normalized_category in seen_categories:
+                raise ValueError("seatCategories must not contain duplicate seatCategory values")
+            seen_categories.add(normalized_category)
+
+            total_seats = parse_positive_int(
+                seat_row.get("totalSeats"), f"seatCategories[{index}].totalSeats"
+            )
+            available_seats = parse_non_negative_int(
+                seat_row.get("availableSeats", total_seats),
+                f"seatCategories[{index}].availableSeats",
+            )
+
+            if available_seats > total_seats:
+                raise ValueError(
+                    f"seatCategories[{index}].availableSeats must be <= totalSeats"
+                )
+
+            parsed_rows.append(
+                {
+                    "seatCategory": normalized_category,
+                    "totalSeats": total_seats,
+                    "availableSeats": available_seats,
+                }
+            )
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        db.start_transaction()
+        release_expired_holds(cursor, event_id=event_id)
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS rowCount
+            FROM seat_inventory
+            WHERE eventId = %s
+            FOR UPDATE
+            """,
+            (event_id,),
+        )
+        existing = cursor.fetchone()
+        if existing and existing["rowCount"] > 0:
+            db.rollback()
+            return (
+                jsonify(
+                    {
+                        "error": "Inventory already exists for this eventId",
+                        "eventId": event_id,
+                    }
+                ),
+                409,
+            )
+
+        for row in parsed_rows:
+            cursor.execute(
+                """
+                INSERT INTO seat_inventory
+                (eventId, seatCategory, totalSeats, availableSeats, createdAt, updatedAt)
+                VALUES (%s, %s, %s, %s, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+                """,
+                (
+                    event_id,
+                    row["seatCategory"],
+                    row["totalSeats"],
+                    row["availableSeats"],
+                ),
+            )
+
+        cursor.execute(
+            """
+            SELECT eventId, seatCategory, totalSeats, availableSeats, updatedAt
+            FROM seat_inventory
+            WHERE eventId = %s
+            ORDER BY seatCategory
+            """,
+            (event_id,),
+        )
+        created_rows = cursor.fetchall()
+        db.commit()
+
+        return (
+            jsonify(
+                {
+                    "eventId": event_id,
+                    "inventory": created_rows,
+                    "status": "CREATED",
+                }
+            ),
+            201,
+        )
     except Exception as e:
         if db:
             db.rollback()
