@@ -2,6 +2,7 @@ import json
 import time
 import urllib.request
 import urllib.error
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BASE = "http://localhost:5004"
@@ -45,6 +46,39 @@ def test_all():
 
     code, _ = req("GET", "/inventory/NOEVENT")
     assert_true(code == 404, "event 404 failed")
+
+    admin_event_id = f"EVTADMIN-{uuid.uuid4().hex[:8].upper()}"
+    code, _ = req("POST", "/inventory/admin/create", {})
+    assert_true(code == 400, "admin create validation failed")
+
+    code, created = req(
+        "POST",
+        "/inventory/admin/create",
+        {
+            "eventId": admin_event_id,
+            "seatCategories": [
+                {"seatCategory": "VIP", "totalSeats": 10},
+                {"seatCategory": "CAT1", "totalSeats": 20, "availableSeats": 15},
+            ],
+        },
+    )
+    assert_true(
+        code == 201 and created.get("eventId") == admin_event_id,
+        f"admin create failed: {code} {created}",
+    )
+
+    code, created_lookup = req("GET", f"/inventory/{admin_event_id}")
+    assert_true(code == 200 and len(created_lookup.get("inventory", [])) == 2, "admin create lookup failed")
+
+    code, _ = req(
+        "POST",
+        "/inventory/admin/create",
+        {
+            "eventId": admin_event_id,
+            "seatCategories": [{"seatCategory": "VIP", "totalSeats": 10}],
+        },
+    )
+    assert_true(code == 409, "duplicate admin create guard failed")
 
     code, _ = req("GET", "/inventory/EVT1001/VIP?quantity=abc")
     assert_true(code == 400, "quantity validation failed")
