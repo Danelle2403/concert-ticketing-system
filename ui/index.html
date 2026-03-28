@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Concert Hub | Find Your Next Show</title>
+    <meta name="theme-color" content="#1a0030">
+    <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
+    <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -41,7 +44,10 @@
 
     <!-- NAVBAR -->
     <nav class="navbar" id="navbar">
-        <div class="nav-brand">Concert Hub</div>
+        <a href="index.html" class="nav-brand">
+            <img src="assets/concert-hub-mark.svg" alt="" class="brand-mark">
+            <span>Concert Hub</span>
+        </a>
         <div class="nav-links">
             <a href="index.html" class="active">Browse</a>
             <a href="index.html#genres">Genres</a>
@@ -235,9 +241,9 @@
             <h2 class="section-title">Upcoming Events</h2>
             <div class="filter-tabs">
                 <button class="filter-tab active" onclick="filterEvents('all', this)">All</button>
-                <button class="filter-tab" onclick="filterEvents('pop', this)">Pop</button>
-                <button class="filter-tab" onclick="filterEvents('electronic', this)">Electronic</button>
-                <button class="filter-tab" onclick="filterEvents('hiphop', this)">Hip-Hop</button>
+                <button class="filter-tab" onclick="filterEvents('next30', this)">Next 30 Days</button>
+                <button class="filter-tab" onclick="filterEvents('next90', this)">Next 90 Days</button>
+                <button class="filter-tab" onclick="filterEvents('later', this)">Later</button>
             </div>
         </div>
         <div id="events-loading" class="loading-state">
@@ -288,10 +294,14 @@
         <div class="newsletter-content animate-on-scroll">
             <h2 class="section-title">Never Miss a Show</h2>
             <p class="newsletter-subtitle">Get notified when new events drop in your city.</p>
-            <div class="newsletter-form">
-                <input type="email" placeholder="Enter your email address" class="newsletter-input">
-                <button class="btn-primary">Subscribe</button>
-            </div>
+            <form id="newsletter-form" class="newsletter-form">
+                <div class="form-group newsletter-field">
+                    <input type="email" id="newsletter-email" placeholder="Enter your email address" class="newsletter-input">
+                </div>
+                <button type="submit" class="btn-primary">Subscribe</button>
+            </form>
+            <div id="newsletter-error" class="error-msg hidden">Enter a valid email address to subscribe.</div>
+            <div id="newsletter-success" class="success-msg hidden">You are on the list. We will email you when new shows drop.</div>
         </div>
     </section>
 
@@ -347,7 +357,10 @@
     </template>
 
     <script src="js/api.js"></script>
+    <script src="js/form-validation.js"></script>
     <script>
+        const { bindLiveValidation, clearErrors, validateEmail, focusFirstError } = window.formValidation;
+        bindLiveValidation(document);
 
         // ── CUSTOM CURSOR ─────────────────────────────────────
         const cursor = document.getElementById("cursor");
@@ -455,11 +468,37 @@
 
         function goToTickets(e) {
             e.preventDefault();
-            window.location.href = user ? "request-refund.html" : "login.html";
+            if (!user) {
+                window.location.href = "login.html";
+                return;
+            }
+
+            window.location.href = user.role === "manager" ? "manage-event.html" : "request-refund.html";
         }
 
         function scrollToEvents() {
             document.getElementById("upcoming").scrollIntoView({ behavior: "smooth" });
+        }
+
+        function handleNewsletterSubmit(event) {
+            event.preventDefault();
+            const form = document.getElementById("newsletter-form");
+            const emailField = document.getElementById("newsletter-email");
+            const error = document.getElementById("newsletter-error");
+            const success = document.getElementById("newsletter-success");
+
+            clearErrors(form);
+            error.classList.add("hidden");
+            success.classList.add("hidden");
+
+            if (!validateEmail(emailField, "Enter a valid email address to subscribe.")) {
+                error.classList.remove("hidden");
+                focusFirstError(form);
+                return;
+            }
+
+            success.classList.remove("hidden");
+            form.reset();
         }
 
         // ── FILTER TABS ───────────────────────────────────────
@@ -469,8 +508,32 @@
             loadEvents(genre);
         }
 
+        function matchesTimeFilter(event, filterKey) {
+            if (filterKey === "all") {
+                return true;
+            }
+
+            const start = new Date(event.startAt);
+            const today = new Date();
+            const daysAway = Math.ceil((start - today) / (1000 * 60 * 60 * 24));
+
+            if (filterKey === "next30") {
+                return daysAway >= 0 && daysAway <= 30;
+            }
+
+            if (filterKey === "next90") {
+                return daysAway >= 0 && daysAway <= 90;
+            }
+
+            if (filterKey === "later") {
+                return daysAway > 90;
+            }
+
+            return true;
+        }
+
         // ── LOAD EVENTS ───────────────────────────────────────
-        async function loadEvents(genre = "all") {
+        async function loadEvents(filterKey = "all") {
             const grid = document.getElementById("events-grid");
             const loading = document.getElementById("events-loading");
             const error = document.getElementById("events-error");
@@ -484,10 +547,7 @@
             try {
                 const data = await getEvents();
                 loading.classList.add("hidden");
-                let events = data.events || [];
-                if (genre !== "all") {
-                    events = events.filter(e => e.genre?.toLowerCase() === genre);
-                }
+                const events = data.filter((event) => matchesTimeFilter(event, filterKey));
                 if (events.length === 0) {
                     empty.classList.remove("hidden");
                     return;
@@ -495,11 +555,12 @@
                 const template = document.getElementById("event-card-template");
                 events.forEach(event => {
                     const card = template.content.cloneNode(true);
-                    card.querySelector(".event-card-date").textContent = event.date || "TBC";
-                    card.querySelector(".event-card-genre").textContent = event.genre || "Live";
+                    card.querySelector(".event-card-date").textContent = event.date;
+                    card.querySelector(".event-card-genre").textContent =
+                        event.venueDetails.city || event.statusLabel;
                     card.querySelector(".event-card-name").textContent = event.name;
                     card.querySelector(".event-card-venue").textContent = event.venue;
-                    card.querySelector(".event-card-price").textContent = `From $${event.price}`;
+                    card.querySelector(".event-card-price").textContent = event.priceLabel;
                     card.querySelector(".btn-card").addEventListener("click", () => {
                         sessionStorage.setItem("selectedEvent", JSON.stringify(event));
                         window.location.href = "buy-ticket.html";
@@ -514,6 +575,7 @@
         }
 
         loadEvents();
+        document.getElementById("newsletter-form").addEventListener("submit", handleNewsletterSubmit);
     </script>
 
 </body>

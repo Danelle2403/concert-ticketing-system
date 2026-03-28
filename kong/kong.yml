@@ -56,4 +56,5 @@ services:
         methods:
           - PUT
           - POST
+          - OPTIONS
         strip_path: false

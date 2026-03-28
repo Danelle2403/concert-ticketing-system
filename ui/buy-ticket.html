@@ -4,13 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Concert Ticketing | Buy Tickets</title>
+    <meta name="theme-color" content="#1a0030">
+    <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
+    <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
     <!-- NAVBAR -->
     <nav class="navbar">
-        <div class="nav-brand">🎵 ConcertHub</div>
+        <a href="index.html" class="nav-brand">
+            <img src="assets/concert-hub-mark.svg" alt="" class="brand-mark">
+            <span>Concert Hub</span>
+        </a>
         <div class="nav-links">
             <a href="index.html">Browse Events</a>
             <a href="request-refund.html">My Tickets</a>
@@ -29,7 +35,7 @@
         </div>
 
         <!-- PURCHASE FORM -->
-        <div class="form-panel">
+        <form id="purchase-form" class="form-panel">
             <h2>Your Details</h2>
 
             <div class="form-group">
@@ -63,18 +69,21 @@
                 Processing your payment...
             </div>
 
-            <button class="btn-primary full-width" onclick="handlePurchase()">
+            <button type="submit" class="btn-primary full-width">
                 Confirm & Pay
             </button>
-            <button class="btn-secondary full-width" onclick="window.location.href='index.html'">
+            <button type="button" class="btn-secondary full-width" onclick="window.location.href='index.html'">
                 Cancel
             </button>
-        </div>
+        </form>
 
     </main>
 
     <script src="js/api.js"></script>
+    <script src="js/form-validation.js"></script>
     <script>
+        const { bindLiveValidation, clearErrors, validateEmail, validateNumber, validateRequired, focusFirstError } = window.formValidation;
+        bindLiveValidation(document);
 
         // Load logged in user
         const user = JSON.parse(sessionStorage.getItem("user"));
@@ -108,11 +117,32 @@
 
         // PURCHASE — calls POST /purchase/checkout
         async function handlePurchase() {
-            const name = document.getElementById("buyer-name").value.trim();
-            const email = document.getElementById("buyer-email").value.trim();
-            const qty = parseInt(document.getElementById("ticket-qty").value);
+            const form = document.getElementById("purchase-form");
+            const nameField = document.getElementById("buyer-name");
+            const emailField = document.getElementById("buyer-email");
+            const qtyField = document.getElementById("ticket-qty");
 
-            if (!name || !email || !qty) return;
+            clearErrors(form);
+            document.getElementById("purchase-error").classList.add("hidden");
+            document.getElementById("purchase-success").classList.add("hidden");
+            const name = nameField.value.trim();
+            const email = emailField.value.trim();
+            const qty = parseInt(qtyField.value, 10);
+
+            let isValid = true;
+            isValid = validateRequired(nameField, "Enter the buyer's full name.") && isValid;
+            isValid = validateEmail(emailField, "Enter a valid email address.") && isValid;
+            isValid = validateNumber(qtyField, {
+                integer: true,
+                min: 1,
+                max: 10,
+                message: "Choose between 1 and 10 tickets."
+            }) && isValid;
+
+            if (!isValid) {
+                focusFirstError(form);
+                return;
+            }
 
             // Check user is logged in
             if (!user) {
@@ -150,6 +180,11 @@
                 document.getElementById("purchase-error").classList.remove("hidden");
             }
         }
+
+        document.getElementById("purchase-form").addEventListener("submit", (event) => {
+            event.preventDefault();
+            handlePurchase();
+        });
 
     </script>
 
