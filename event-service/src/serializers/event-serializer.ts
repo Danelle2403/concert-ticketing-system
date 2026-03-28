@@ -17,6 +17,7 @@ export const serializeVenue = (source: {
 
 export const serializeEventSummary = (row: Record<string, unknown>): EventSummary => ({
   id: String(row.id),
+  managerId: row.manager_id === null || row.manager_id === undefined ? null : Number(row.manager_id),
   title: String(row.title),
   description: String(row.description ?? ""),
   status: String(row.status) as EventSummary["status"],

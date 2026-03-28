@@ -12,6 +12,7 @@ describe("Event Service", () => {
   });
 
   const buildPayload = () => ({
+    managerId: 1,
     title: "Taylor Swift Live in Singapore",
     description: "Night one of the Eras Tour",
     startAt: "2026-07-11T12:00:00.000Z",
@@ -41,6 +42,7 @@ describe("Event Service", () => {
     expect(createResponse.status).toBe(201);
     expect(createResponse.body.data.title).toBe(buildPayload().title);
     expect(createResponse.body.data.status).toBe("DRAFT");
+    expect(createResponse.body.data.managerId).toBe(1);
 
     const eventId = createResponse.body.data.id;
     const getResponse = await request(app).get(`/events/${eventId}`);
@@ -119,6 +121,7 @@ describe("Event Service", () => {
     const app = createApp(db);
     await request(app).post("/events").send({
       ...buildPayload(),
+      managerId: 2,
       title: "Published Show",
       status: "PUBLISHED"
     });
@@ -131,6 +134,7 @@ describe("Event Service", () => {
 
     const response = await request(app).get("/events").query({
       status: "PUBLISHED",
+      managerId: 2,
       purchasableOnly: "true"
     });
 
@@ -138,5 +142,6 @@ describe("Event Service", () => {
     expect(response.body.meta.count).toBe(1);
     expect(response.body.data[0].title).toBe("Published Show");
     expect(response.body.data[0].isPurchasable).toBe(true);
+    expect(response.body.data[0].managerId).toBe(2);
   });
 });

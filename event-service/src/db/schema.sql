@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS events (
   id UUID PRIMARY KEY,
+  manager_id INTEGER,
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   start_at TIMESTAMPTZ NOT NULL,
@@ -17,6 +18,9 @@ CREATE TABLE IF NOT EXISTS events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE events
+ADD COLUMN IF NOT EXISTS manager_id INTEGER;
 
 CREATE TABLE IF NOT EXISTS pricing_tiers (
   id UUID PRIMARY KEY,
@@ -70,5 +74,6 @@ CREATE TABLE IF NOT EXISTS reschedule_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
+CREATE INDEX IF NOT EXISTS idx_events_manager_id ON events(manager_id);
 CREATE INDEX IF NOT EXISTS idx_events_start_at ON events(start_at);
 CREATE INDEX IF NOT EXISTS idx_events_venue_name ON events(venue_name);

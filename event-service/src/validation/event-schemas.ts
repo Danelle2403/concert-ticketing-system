@@ -90,6 +90,7 @@ const enrichEventValidation = <T extends z.ZodTypeAny>(schema: T) =>
 
 export const createEventSchema = enrichEventValidation(
   z.object({
+    managerId: z.number().int().positive("managerId must be a positive integer"),
     title: z.string().trim().min(1, "Title is required"),
     description: z.string().trim().optional().default(""),
     startAt: z.coerce.date(),
@@ -153,6 +154,7 @@ export const cancelEventSchema = z.object({
 });
 
 export const listEventsQuerySchema = z.object({
+  managerId: z.coerce.number().int().positive().optional(),
   status: z.enum(EVENT_STATUSES).optional(),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),

@@ -271,6 +271,11 @@ export const listEvents = async (
     clauses.push(`status = $${params.length}`);
   }
 
+  if (filters.managerId) {
+    params.push(filters.managerId);
+    clauses.push(`manager_id = $${params.length}`);
+  }
+
   if (filters.startDate) {
     params.push(filters.startDate.toISOString());
     clauses.push(`start_at >= $${params.length}`);
@@ -332,6 +337,7 @@ export const createEvent = async (
       `
         INSERT INTO events (
           id,
+          manager_id,
           title,
           description,
           start_at,
@@ -347,10 +353,11 @@ export const createEvent = async (
           created_at,
           updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $14)
       `,
       [
         eventId,
+        input.managerId,
         input.title.trim(),
         normalizeText(input.description) ?? "",
         input.startAt.toISOString(),
