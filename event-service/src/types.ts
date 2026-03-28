@@ -54,6 +54,7 @@ export interface RescheduleHistoryEntry {
 
 export interface EventRecord {
   id: string;
+  managerId?: number | null;
   title: string;
   description: string;
   status: EventStatus;
@@ -75,6 +76,7 @@ export interface EventRecord {
 
 export interface EventSummary {
   id: string;
+  managerId?: number | null;
   title: string;
   description: string;
   status: EventStatus;
@@ -91,6 +93,7 @@ export interface EventSummary {
 }
 
 export interface CreateEventInput {
+  managerId: number;
   title: string;
   description?: string;
   startAt: Date;
@@ -142,6 +145,7 @@ export interface CancelEventInput {
 }
 
 export interface EventListFilters {
+  managerId?: number;
   status?: EventStatus;
   startDate?: Date;
   endDate?: Date;

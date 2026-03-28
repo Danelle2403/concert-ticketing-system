@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  create-edit-event-composite:
+    build: .
+    ports:
+      - "5012:5000"
+    environment:
+      USER_SERVICE_URL: http://host.docker.internal:5001
+      EVENT_SERVICE_URL: http://host.docker.internal:5002
+      SEAT_INVENTORY_URL: http://host.docker.internal:5004
+      REQUEST_TIMEOUT_SECONDS: 8
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

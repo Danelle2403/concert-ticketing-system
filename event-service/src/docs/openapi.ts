@@ -51,6 +51,7 @@ export const openApiDocument = {
         type: "object",
         properties: {
           id: { type: "string", format: "uuid" },
+          managerId: { type: "integer", nullable: true },
           title: { type: "string" },
           description: { type: "string" },
           status: {
@@ -107,6 +108,7 @@ export const openApiDocument = {
         tags: ["Events"],
         summary: "List events",
         parameters: [
+          { in: "query", name: "managerId", schema: { type: "integer" } },
           { in: "query", name: "status", schema: { type: "string" } },
           { in: "query", name: "startDate", schema: { type: "string", format: "date-time" } },
           { in: "query", name: "endDate", schema: { type: "string", format: "date-time" } },
