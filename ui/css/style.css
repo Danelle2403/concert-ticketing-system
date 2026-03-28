@@ -1442,7 +1442,7 @@ a:hover { color: var(--text-primary); }
 
 .warning-text {
     font-size: 0.85rem;
-    color: #f87171;
+    color: #fbbf24;
     font-weight: 500;
 }
 
@@ -1481,12 +1481,6 @@ a:hover { color: var(--text-primary); }
     100% { left: 150%; }
 }
 
-.loading-msg {
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    padding: 12px 0;
-}
-
 .error-state,
 .empty-state {
     padding: 48px;
@@ -1498,22 +1492,47 @@ a:hover { color: var(--text-primary); }
     border-radius: var(--radius);
 }
 
+.loading-msg,
+.info-msg,
+.warning-msg,
 .error-msg {
-    background: rgba(248, 113, 113, 0.08);
-    color: #f87171;
-    border: 1px solid rgba(248, 113, 113, 0.2);
     padding: 12px 16px;
     border-radius: var(--radius-sm);
     font-size: 0.9rem;
+    line-height: 1.5;
 }
 
 .success-msg {
-    background: rgba(212, 112, 154, 0.08);
-    color: var(--pink);
-    border: 1px solid rgba(212, 112, 154, 0.2);
+    background: rgba(52, 211, 153, 0.12);
+    color: #6ee7b7;
+    border: 1px solid rgba(52, 211, 153, 0.28);
     padding: 12px 16px;
     border-radius: var(--radius-sm);
     font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.loading-msg,
+.info-msg {
+    background: rgba(96, 165, 250, 0.12);
+    color: #93c5fd;
+    border: 1px solid rgba(96, 165, 250, 0.24);
+}
+
+.warning-msg {
+    background: rgba(251, 191, 36, 0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.24);
+}
+
+.error-msg {
+    background: rgba(248, 113, 113, 0.1);
+    color: #fca5a5;
+    border: 1px solid rgba(248, 113, 113, 0.28);
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    line-height: 1.5;
 }
 
 /* ── UTILITY ─────────────────────────────────────────────── */
