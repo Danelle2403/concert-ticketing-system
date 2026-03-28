@@ -142,10 +142,24 @@ a:hover { color: var(--text-primary); }
 }
 
 .nav-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
     font-size: 1.3rem;
     font-weight: 700;
     letter-spacing: -0.5px;
     color: var(--text-primary);
+}
+
+.nav-brand:hover {
+    color: var(--text-primary);
+}
+
+.brand-mark {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 12px 18px rgba(212, 112, 154, 0.18));
 }
 
 .nav-links {
@@ -183,6 +197,7 @@ a:hover { color: var(--text-primary); }
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
 .btn-nav {
@@ -1840,6 +1855,98 @@ a:hover { color: var(--text-primary); }
 }
 
 @media (max-width: 1100px) {
+    .navbar,
+    .navbar-scrolled {
+        padding: 16px 24px;
+    }
+
+    .navbar {
+        flex-wrap: wrap;
+        gap: 14px 20px;
+        align-items: flex-start;
+    }
+
+    .nav-links {
+        order: 3;
+        width: 100%;
+        gap: 16px 24px;
+        flex-wrap: wrap;
+    }
+
+    .hero-featured,
+    .section,
+    .section-dark,
+    .section-newsletter,
+    .footer {
+        padding-left: 24px;
+        padding-right: 24px;
+    }
+
+    .hero-featured {
+        min-height: 620px;
+        padding-top: 48px;
+    }
+
+    .hero-scroll-hint {
+        display: none;
+    }
+
+    .stats-bar {
+        flex-wrap: wrap;
+        gap: 28px 20px;
+        padding: 36px 24px;
+    }
+
+    .stat {
+        padding: 0 20px;
+        min-width: 180px;
+    }
+
+    .stat-divider {
+        display: none;
+    }
+
+    .genre-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .artists-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .footer-top {
+        flex-direction: column;
+    }
+
+    .footer-links {
+        gap: 32px;
+        flex-wrap: wrap;
+    }
+
+    .ticket-card,
+    .event-manage-card {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .ticket-actions {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .newsletter-form {
+        flex-direction: column;
+    }
+
+    .auth-container {
+        grid-template-columns: 1fr;
+    }
+
+    .auth-left,
+    .auth-right {
+        padding: 56px 32px;
+    }
+
     .manager-grid {
         grid-template-columns: 1fr;
     }
@@ -1850,6 +1957,162 @@ a:hover { color: var(--text-primary); }
 }
 
 @media (max-width: 720px) {
+    .ticker-wrap,
+    .strip-scroll {
+        display: none;
+    }
+
+    .nav-brand {
+        font-size: 1.08rem;
+    }
+
+    .brand-mark {
+        width: 30px;
+        height: 30px;
+    }
+
+    .nav-links {
+        font-size: 0.84rem;
+        gap: 12px 18px;
+    }
+
+    .nav-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .hero-featured {
+        min-height: auto;
+        padding: 36px 20px 48px;
+        align-items: flex-end;
+    }
+
+    .hero-top-row {
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .hero-title {
+        font-size: clamp(2.4rem, 14vw, 4rem);
+        letter-spacing: -2px;
+        margin-bottom: 20px;
+    }
+
+    .hero-meta {
+        gap: 8px;
+        font-size: 0.88rem;
+        margin-bottom: 22px;
+    }
+
+    .hero-meta .dot {
+        display: none;
+    }
+
+    .hero-countdown {
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 28px;
+    }
+
+    .countdown-block {
+        min-width: calc(50% - 8px);
+        padding: 12px 14px;
+    }
+
+    .countdown-sep {
+        display: none;
+    }
+
+    .hero-actions {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+    }
+
+    .hero-actions .btn-primary,
+    .hero-actions .btn-ghost {
+        width: 100%;
+    }
+
+    .section,
+    .section-dark,
+    .section-newsletter,
+    .footer {
+        padding-left: 20px;
+        padding-right: 20px;
+    }
+
+    .section {
+        padding-top: 56px;
+        padding-bottom: 56px;
+    }
+
+    .section-newsletter {
+        padding-top: 72px;
+        padding-bottom: 72px;
+    }
+
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 28px;
+    }
+
+    .genre-grid,
+    .artists-grid,
+    .events-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .filter-tabs {
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+    }
+
+    .filter-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .filter-tab {
+        white-space: nowrap;
+        flex: 0 0 auto;
+    }
+
+    .event-card,
+    .genre-card,
+    .artist-card,
+    .ticket-card,
+    .event-manage-card,
+    .form-panel,
+    .modal-content {
+        padding: 22px;
+    }
+
+    .footer-top,
+    .footer-links {
+        gap: 24px;
+    }
+
+    .footer-bottom {
+        line-height: 1.6;
+    }
+
+    .auth-left {
+        display: none;
+    }
+
+    .auth-right {
+        min-height: calc(100vh - 84px);
+        padding: 40px 20px;
+    }
+
+    .auth-right-inner {
+        max-width: none;
+    }
+
     .manager-header,
     .panel-head,
     .section-card-head,
