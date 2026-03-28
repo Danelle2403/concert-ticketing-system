@@ -112,10 +112,7 @@ services:
     ports:
       - "5003:5000"
     environment:
-      - DB_HOST=event-db
-      - DB_USER=root
-      - DB_PASSWORD=root
-      - DB_NAME=event_db
+      - DATABASE_URL=postgresql://event_user:event_password@event-db:5432/event_service_db
     depends_on:
       event-db:
         condition: service_healthy
@@ -124,15 +121,15 @@ services:
 
   # ── EVENT SERVICE DATABASE ───────────────────────────────────
   event-db:
-    image: mysql:8.0
+    image: postgres:16-alpine
     environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_DATABASE=event_db
+      - POSTGRES_USER=event_user
+      - POSTGRES_PASSWORD=event_password
+      - POSTGRES_DB=event_service_db
     volumes:
-      - event-db-data:/var/lib/mysql
-      - ./event-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - event-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      test: ["CMD-SHELL", "pg_isready -U event_user -d event_service_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -177,17 +174,17 @@ services:
 
   # ── EDIT EVENT COMPOSITE ────────────────────────────────────
   edit-event-composite:
-    build: ./edit-event-composite
+    build: ./create-edit-event-composite
     ports:
       - "5012:5000"
     environment:
       - EVENT_SERVICE_URL=http://event-service:5000
       - USER_SERVICE_URL=http://user-service:5000
-      - REFUND_SERVICE_URL=http://refund-composite:5000
+      - SEAT_INVENTORY_URL=http://seat-inventory:5000
     depends_on:
       - event-service
       - user-service
-      - refund-composite
+      - seat-inventory
     networks:
       - ticketing-net
 
@@ -245,7 +242,7 @@ services:
   #     - ticketing-net
 
   # edit-event-composite:
-  #   build: ./edit-event-composite
+  #   build: ./create-edit-event-composite
   #   ports:
   #     - "5012:5000"
   #   networks:
@@ -255,7 +252,7 @@ services:
 volumes:
   user-db-data:
   seat-inventory-db-data:
-  event-db-data:
+  event-postgres-data:
   purchase-data:
 
 # ── NETWORKS ──────────────────────────────────────────────────

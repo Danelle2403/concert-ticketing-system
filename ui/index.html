@@ -294,10 +294,14 @@
         <div class="newsletter-content animate-on-scroll">
             <h2 class="section-title">Never Miss a Show</h2>
             <p class="newsletter-subtitle">Get notified when new events drop in your city.</p>
-            <div class="newsletter-form">
-                <input type="email" placeholder="Enter your email address" class="newsletter-input">
-                <button class="btn-primary">Subscribe</button>
-            </div>
+            <form id="newsletter-form" class="newsletter-form">
+                <div class="form-group newsletter-field">
+                    <input type="email" id="newsletter-email" placeholder="Enter your email address" class="newsletter-input">
+                </div>
+                <button type="submit" class="btn-primary">Subscribe</button>
+            </form>
+            <div id="newsletter-error" class="error-msg hidden">Enter a valid email address to subscribe.</div>
+            <div id="newsletter-success" class="success-msg hidden">You are on the list. We will email you when new shows drop.</div>
         </div>
     </section>
 
@@ -353,7 +357,10 @@
     </template>
 
     <script src="js/api.js"></script>
+    <script src="js/form-validation.js"></script>
     <script>
+        const { bindLiveValidation, clearErrors, validateEmail, focusFirstError } = window.formValidation;
+        bindLiveValidation(document);
 
         // ── CUSTOM CURSOR ─────────────────────────────────────
         const cursor = document.getElementById("cursor");
@@ -473,6 +480,27 @@
             document.getElementById("upcoming").scrollIntoView({ behavior: "smooth" });
         }
 
+        function handleNewsletterSubmit(event) {
+            event.preventDefault();
+            const form = document.getElementById("newsletter-form");
+            const emailField = document.getElementById("newsletter-email");
+            const error = document.getElementById("newsletter-error");
+            const success = document.getElementById("newsletter-success");
+
+            clearErrors(form);
+            error.classList.add("hidden");
+            success.classList.add("hidden");
+
+            if (!validateEmail(emailField, "Enter a valid email address to subscribe.")) {
+                error.classList.remove("hidden");
+                focusFirstError(form);
+                return;
+            }
+
+            success.classList.remove("hidden");
+            form.reset();
+        }
+
         // ── FILTER TABS ───────────────────────────────────────
         function filterEvents(genre, btn) {
             document.querySelectorAll(".filter-tab").forEach(t => t.classList.remove("active"));
@@ -547,6 +575,7 @@
         }
 
         loadEvents();
+        document.getElementById("newsletter-form").addEventListener("submit", handleNewsletterSubmit);
     </script>
 
 </body>

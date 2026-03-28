@@ -227,7 +227,18 @@
     </div>
 
     <script src="js/api.js"></script>
+    <script src="js/form-validation.js"></script>
     <script>
+        const {
+            bindLiveValidation,
+            clearErrors,
+            focusFirstError,
+            setFieldError,
+            validateNumber,
+            validateRequired
+        } = window.formValidation;
+        bindLiveValidation(document);
+
         const managerUser = JSON.parse(sessionStorage.getItem("user"));
         const managerId = managerUser?.userId || managerUser?.id;
         let managedEvents = [];
@@ -379,6 +390,7 @@
             document.getElementById("create-end-at").value = toDatetimeLocal(end.toISOString());
             document.getElementById("create-status").value = "DRAFT";
             document.getElementById("create-description").value = "";
+            clearErrors(document.getElementById("create-event-form"));
             hideMessages("create-event");
         }
 
@@ -508,13 +520,192 @@
             document.getElementById("edit-venue-address").value = event.venueDetails.address || "";
             document.getElementById("edit-venue-city").value = event.venueDetails.city || "";
             document.getElementById("edit-venue-country").value = event.venueDetails.country || "";
+            clearErrors(document.getElementById("edit-modal"));
             hideMessages("edit");
             document.getElementById("edit-modal").classList.remove("hidden");
         }
 
         function closeEditModal() {
             editingEventId = null;
+            clearErrors(document.getElementById("edit-modal"));
+            hideMessages("edit");
             document.getElementById("edit-modal").classList.add("hidden");
+        }
+
+        function validateDateRange(startField, endField) {
+            const startValue = startField.value;
+            const endValue = endField.value;
+
+            let isValid = true;
+            isValid = validateRequired(startField, "Select the event start date and time.") && isValid;
+            isValid = validateRequired(endField, "Select the event end date and time.") && isValid;
+
+            if (!startValue || !endValue) {
+                return isValid;
+            }
+
+            const startDate = new Date(startValue);
+            const endDate = new Date(endValue);
+
+            if (Number.isNaN(startDate.getTime())) {
+                isValid = false;
+                setFieldError(startField, "Enter a valid start date and time.");
+            }
+
+            if (Number.isNaN(endDate.getTime())) {
+                isValid = false;
+                setFieldError(endField, "Enter a valid end date and time.");
+            }
+
+            if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime()) && endDate <= startDate) {
+                isValid = false;
+                setFieldError(endField, "End time must be later than the start time.");
+            }
+
+            return isValid;
+        }
+
+        function validatePricingTierRows() {
+            const rows = [...document.querySelectorAll("#pricing-tier-rows .stack-row")];
+            if (!rows.length) {
+                showMessage("create-event-error", "Add at least one pricing tier before creating an event.");
+                return false;
+            }
+
+            let isValid = true;
+            const seenCodes = new Set();
+
+            rows.forEach((row, index) => {
+                const codeField = row.querySelector(".tier-code");
+                const nameField = row.querySelector(".tier-name");
+                const priceField = row.querySelector(".tier-price");
+                const currencyField = row.querySelector(".tier-currency");
+                const label = `pricing tier ${index + 1}`;
+
+                isValid = validateRequired(codeField, `Enter a code for ${label}.`) && isValid;
+                isValid = validateRequired(nameField, `Enter a display name for ${label}.`) && isValid;
+                isValid = validateNumber(priceField, {
+                    min: 0,
+                    message: `Enter a valid price for ${label}.`
+                }) && isValid;
+                isValid = validateRequired(currencyField, `Enter a currency for ${label}.`) && isValid;
+
+                const code = codeField.value.trim().toUpperCase();
+                if (code) {
+                    if (seenCodes.has(code)) {
+                        isValid = false;
+                        setFieldError(codeField, `Tier code "${code}" is duplicated. Use a unique code.`);
+                    } else {
+                        seenCodes.add(code);
+                    }
+                }
+            });
+
+            return isValid;
+        }
+
+        function validateSeatSectionRows() {
+            const rows = [...document.querySelectorAll("#seat-section-rows .stack-row")];
+            if (!rows.length) {
+                showMessage("create-event-error", "Add at least one seat section before creating an event.");
+                return false;
+            }
+
+            const tierCodes = new Set(
+                [...document.querySelectorAll(".tier-code")]
+                    .map((field) => field.value.trim().toUpperCase())
+                    .filter(Boolean)
+            );
+
+            let isValid = true;
+            const seenCodes = new Set();
+
+            rows.forEach((row, index) => {
+                const codeField = row.querySelector(".section-code");
+                const nameField = row.querySelector(".section-name");
+                const tierCodeField = row.querySelector(".section-tier-code");
+                const capacityField = row.querySelector(".section-capacity");
+                const label = `seat section ${index + 1}`;
+
+                isValid = validateRequired(codeField, `Enter a section code for ${label}.`) && isValid;
+                isValid = validateRequired(nameField, `Enter a section name for ${label}.`) && isValid;
+                isValid = validateRequired(tierCodeField, `Enter the pricing tier code for ${label}.`) && isValid;
+                isValid = validateNumber(capacityField, {
+                    integer: true,
+                    min: 1,
+                    message: `Enter a whole-number capacity above 0 for ${label}.`
+                }) && isValid;
+
+                const sectionCode = codeField.value.trim().toUpperCase();
+                if (sectionCode) {
+                    if (seenCodes.has(sectionCode)) {
+                        isValid = false;
+                        setFieldError(codeField, `Section code "${sectionCode}" is duplicated. Use a unique code.`);
+                    } else {
+                        seenCodes.add(sectionCode);
+                    }
+                }
+
+                const tierCode = tierCodeField.value.trim().toUpperCase();
+                if (tierCode && !tierCodes.has(tierCode)) {
+                    isValid = false;
+                    setFieldError(tierCodeField, `Tier code "${tierCode}" does not match any pricing tier above.`);
+                }
+            });
+
+            return isValid;
+        }
+
+        function validateCreateForm() {
+            const form = document.getElementById("create-event-form");
+            clearErrors(form);
+            hideMessages("create-event");
+
+            const titleField = document.getElementById("create-title");
+            const statusField = document.getElementById("create-status");
+            const startField = document.getElementById("create-start-at");
+            const endField = document.getElementById("create-end-at");
+            const venueNameField = document.getElementById("create-venue-name");
+
+            let isValid = true;
+            isValid = validateRequired(titleField, "Enter the event title.") && isValid;
+            isValid = validateRequired(statusField, "Select whether the event is draft or published.") && isValid;
+            isValid = validateRequired(venueNameField, "Enter the venue name.") && isValid;
+            isValid = validateDateRange(startField, endField) && isValid;
+            isValid = validatePricingTierRows() && isValid;
+            isValid = validateSeatSectionRows() && isValid;
+
+            if (!isValid) {
+                showMessage("create-event-error", "Fix the highlighted fields before creating the event.");
+                focusFirstError(form);
+            }
+
+            return isValid;
+        }
+
+        function validateEditForm() {
+            const modal = document.getElementById("edit-modal");
+            clearErrors(modal);
+            hideMessages("edit");
+
+            const titleField = document.getElementById("edit-title");
+            const statusField = document.getElementById("edit-status");
+            const startField = document.getElementById("edit-start-at");
+            const endField = document.getElementById("edit-end-at");
+            const venueNameField = document.getElementById("edit-venue-name");
+
+            let isValid = true;
+            isValid = validateRequired(titleField, "Enter the event title.") && isValid;
+            isValid = validateRequired(statusField, "Select whether the event is draft or published.") && isValid;
+            isValid = validateRequired(venueNameField, "Enter the venue name.") && isValid;
+            isValid = validateDateRange(startField, endField) && isValid;
+
+            if (!isValid) {
+                showMessage("edit-error", "Fix the highlighted fields before saving the event.");
+                focusFirstError(modal);
+            }
+
+            return isValid;
         }
 
         async function confirmEdit() {
@@ -522,7 +713,10 @@
                 return;
             }
 
-            hideMessages("edit");
+            if (!validateEditForm()) {
+                return;
+            }
+
             document.getElementById("edit-loading").classList.remove("hidden");
 
             try {
@@ -542,7 +736,11 @@
 
         document.getElementById("create-event-form").addEventListener("submit", async (event) => {
             event.preventDefault();
-            hideMessages("create-event");
+
+            if (!validateCreateForm()) {
+                return;
+            }
+
             document.getElementById("create-event-loading").classList.remove("hidden");
 
             try {

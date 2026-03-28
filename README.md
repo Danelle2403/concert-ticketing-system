@@ -92,7 +92,7 @@ concert-ticketing-system/
 ├── event-service/             # Event atomic microservice
 ├── purchase-composite/        # Scenario 1 orchestration
 ├── refund-composite/          # Scenario 3 / ticket refund orchestration
-├── edit-event-composite/      # Scenario 2 orchestration
+├── create-edit-event-composite/ # Scenario 2 orchestration
 ├── kong/                      # Kong declarative routes
 ├── docker-compose.yml
 └── README.md

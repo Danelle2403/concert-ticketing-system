@@ -83,18 +83,20 @@
                         <p>Enter your User ID to continue</p>
                     </div>
                     <div class="auth-divider"></div>
-                    <div class="form-group">
-                        <label for="login-id">User ID</label>
-                        <input type="text" id="login-id" placeholder="e.g. U001">
-                    </div>
-                    <div id="login-error" class="error-msg hidden">
-                        User not found. Please check your ID or register.
-                    </div>
-                    <button class="btn-primary full-width" onclick="handleLogin()">Login</button>
-                    <p class="auth-switch">
-                        Don't have an account?
-                        <button class="auth-switch-btn" onclick="switchTab('register')">Register here</button>
-                    </p>
+                    <form id="login-form" class="auth-form-wrap">
+                        <div class="form-group">
+                            <label for="login-id">User ID</label>
+                            <input type="text" id="login-id" placeholder="e.g. 2">
+                        </div>
+                        <div id="login-error" class="error-msg hidden">
+                            User not found. Please check your ID or register.
+                        </div>
+                        <button type="submit" class="btn-primary full-width">Login</button>
+                        <p class="auth-switch">
+                            Don't have an account?
+                            <button type="button" class="auth-switch-btn" onclick="switchTab('register')">Register here</button>
+                        </p>
+                    </form>
                 </div>
 
                 <!-- REGISTER PANEL — hidden by default -->
@@ -104,32 +106,34 @@
                         <p>Register as a fan or event manager</p>
                     </div>
                     <div class="auth-divider"></div>
-                    <div class="form-group">
-                        <label for="reg-name">Full Name</label>
-                        <input type="text" id="reg-name" placeholder="Your full name">
-                    </div>
-                    <div class="form-group">
-                        <label for="reg-email">Email</label>
-                        <input type="email" id="reg-email" placeholder="you@example.com">
-                    </div>
-                    <div class="form-group">
-                        <label for="reg-role">I am a</label>
-                        <select id="reg-role">
-                            <option value="fan">Fan</option>
-                            <option value="manager">Event Manager</option>
-                        </select>
-                    </div>
-                    <div id="register-error" class="error-msg hidden">
-                        Registration failed. Please try again.
-                    </div>
-                    <div id="register-success" class="success-msg hidden">
-                        Account created! Redirecting...
-                    </div>
-                    <button class="btn-primary full-width" onclick="handleRegister()">Create Account</button>
-                    <p class="auth-switch">
-                        Already have an account?
-                        <button class="auth-switch-btn" onclick="switchTab('login')">Login here</button>
-                    </p>
+                    <form id="register-form" class="auth-form-wrap">
+                        <div class="form-group">
+                            <label for="reg-name">Full Name</label>
+                            <input type="text" id="reg-name" placeholder="Your full name">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-email">Email</label>
+                            <input type="email" id="reg-email" placeholder="you@example.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-role">I am a</label>
+                            <select id="reg-role">
+                                <option value="fan">Fan</option>
+                                <option value="manager">Event Manager</option>
+                            </select>
+                        </div>
+                        <div id="register-error" class="error-msg hidden">
+                            Registration failed. Please try again.
+                        </div>
+                        <div id="register-success" class="success-msg hidden">
+                            Account created! Redirecting...
+                        </div>
+                        <button type="submit" class="btn-primary full-width">Create Account</button>
+                        <p class="auth-switch">
+                            Already have an account?
+                            <button type="button" class="auth-switch-btn" onclick="switchTab('login')">Login here</button>
+                        </p>
+                    </form>
                 </div>
 
             </div>
@@ -137,7 +141,10 @@
     </main>
 
     <script src="js/api.js"></script>
+    <script src="js/form-validation.js"></script>
     <script>
+        const { bindLiveValidation, clearErrors, validateEmail, validateRequired, setFieldError, focusFirstError } = window.formValidation;
+        bindLiveValidation(document);
 
         function switchTab(tab) {
             // Show/hide panels
@@ -148,32 +155,75 @@
                 document.getElementById("panel-login").style.display = "none";
                 document.getElementById("panel-register").style.display = "flex";
             }
+
+            clearErrors(document.getElementById("panel-login"));
+            clearErrors(document.getElementById("panel-register"));
+            document.getElementById("login-error").classList.add("hidden");
+            document.getElementById("register-error").classList.add("hidden");
+            document.getElementById("register-success").classList.add("hidden");
+
             // Update tab styles
             document.getElementById("tab-login").classList.toggle("active", tab === "login");
             document.getElementById("tab-register").classList.toggle("active", tab === "register");
         }
 
         async function handleLogin() {
+            const panel = document.getElementById("panel-login");
+            clearErrors(panel);
+            document.getElementById("login-error").classList.add("hidden");
+
             const userId = document.getElementById("login-id").value.trim();
-            if (!userId) return;
+            const userIdField = document.getElementById("login-id");
+            let isValid = validateRequired(userIdField, "Enter your user ID.");
+
+            if (userId && !/^\d+$/.test(userId)) {
+                isValid = false;
+                setFieldError(userIdField, "User ID must be a number, for example 2.");
+            }
+
+            if (!isValid) {
+                focusFirstError(panel);
+                return;
+            }
+
             try {
                 const data = await loginUser(userId);
                 if (data && data.userId) {
                     sessionStorage.setItem("user", JSON.stringify(data));
                     window.location.href = data.role === "manager" ? "manage-event.html" : "index.html";
                 } else {
+                    setFieldError(userIdField, "We could not find that user ID.");
                     document.getElementById("login-error").classList.remove("hidden");
                 }
             } catch (err) {
+                setFieldError(userIdField, "We could not find that user ID.");
                 document.getElementById("login-error").classList.remove("hidden");
             }
         }
 
         async function handleRegister() {
+            const panel = document.getElementById("panel-register");
+            clearErrors(panel);
+            document.getElementById("register-error").classList.add("hidden");
+            document.getElementById("register-success").classList.add("hidden");
+
             const name = document.getElementById("reg-name").value.trim();
             const email = document.getElementById("reg-email").value.trim();
             const role = document.getElementById("reg-role").value;
-            if (!name || !email) return;
+            const nameField = document.getElementById("reg-name");
+            const emailField = document.getElementById("reg-email");
+            const roleField = document.getElementById("reg-role");
+
+            let isValid = true;
+            isValid = validateRequired(nameField, "Enter your full name.") && isValid;
+            isValid = validateEmail(emailField, "Enter a valid email address.") && isValid;
+            isValid = validateRequired(roleField, "Select whether you are a fan or event manager.") && isValid;
+
+            if (!isValid) {
+                focusFirstError(panel);
+                return;
+            }
+
             try {
                 const data = await registerUser({ name, email, role });
                 if (data && data.userId) {
@@ -184,9 +234,23 @@
                     document.getElementById("register-error").classList.remove("hidden");
                 }
             } catch (err) {
+                if (err?.message?.toLowerCase().includes("email")) {
+                    setFieldError(emailField, err.message);
+                }
                 document.getElementById("register-error").classList.remove("hidden");
+                document.getElementById("register-error").textContent = err.message || "Registration failed. Please try again.";
             }
         }
+
+        document.getElementById("login-form").addEventListener("submit", (event) => {
+            event.preventDefault();
+            handleLogin();
+        });
+
+        document.getElementById("register-form").addEventListener("submit", (event) => {
+            event.preventDefault();
+            handleRegister();
+        });
 
     </script>
 
