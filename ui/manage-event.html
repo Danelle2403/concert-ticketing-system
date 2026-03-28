@@ -3,70 +3,215 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Concert Ticketing | Manage Events</title>
+    <title>Concert Hub | Manage Events</title>
     <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
-    <!-- NAVBAR -->
     <nav class="navbar">
-        <div class="nav-brand">🎵 ConcertHub</div>
+        <div class="nav-brand">Concert Hub</div>
         <div class="nav-links">
-            <a href="index.html">Browse Events</a>
+            <a href="index.html">Browse</a>
             <a href="manage-event.html" class="active">Manage Events</a>
-            <span id="nav-user"></span>
+        </div>
+        <div class="nav-actions">
+            <a href="login.html" id="nav-login" class="btn-nav">Login</a>
+            <span id="nav-user" class="hidden nav-user-label"></span>
         </div>
     </nav>
 
-    <main class="container">
+    <main class="container manager-shell">
+        <section id="access-denied" class="form-panel hidden manager-access-card">
+            <h2>Manager Access Required</h2>
+            <p class="form-subtitle">Login with a manager account to create or edit events.</p>
+            <a href="login.html" class="btn-primary">Go to Login</a>
+        </section>
 
-        <!-- NOT LOGGED IN / NOT MANAGER -->
-        <div id="access-denied" class="hidden">
-            <p>⛔ Access denied. This page is for event managers only.</p>
-            <a href="login.html">Login as a manager</a>
-        </div>
+        <div id="manager-view" class="hidden manager-dashboard">
+            <section class="manager-header">
+                <div>
+                    <p class="manager-eyebrow">API Gateway Flow</p>
+                    <h1>Event Manager Workspace</h1>
+                    <p class="manager-summary">
+                        Browse data comes from the event service through Kong. Create and edit actions go
+                        through the create/edit composite aliases exposed by Kong.
+                    </p>
+                </div>
+                <div class="manager-header-card">
+                    <span class="summary-pill">Gateway: Kong</span>
+                    <span class="summary-pill">Create: Composite</span>
+                    <span class="summary-pill">Edit: Composite</span>
+                </div>
+            </section>
 
-        <!-- MANAGER VIEW -->
-        <div id="manager-view" class="hidden">
+            <section class="manager-grid">
+                <div class="form-panel manager-create-panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Create Event</h2>
+                            <p class="form-subtitle">Use this form to publish a full event with pricing tiers and seat inventory bootstrap data.</p>
+                        </div>
+                        <button type="button" class="btn-secondary" onclick="resetCreateForm()">Reset</button>
+                    </div>
 
-            <h2>My Events</h2>
-            <div id="loading" class="loading-msg">Loading your events...</div>
-            <div id="events-list"></div>
-            <div id="no-events" class="hidden">
-                <p>You have no events yet.</p>
-            </div>
-            <div id="error-msg" class="error-msg hidden">
-                Failed to load events. Please try again.
-            </div>
+                    <form id="create-event-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="create-title">Title</label>
+                                <input type="text" id="create-title" placeholder="Composite Demo: New Arena Show" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="create-status">Status</label>
+                                <select id="create-status">
+                                    <option value="DRAFT">Draft</option>
+                                    <option value="PUBLISHED">Published</option>
+                                </select>
+                            </div>
+                        </div>
 
+                        <div class="form-group">
+                            <label for="create-description">Description</label>
+                            <textarea id="create-description" rows="3" placeholder="Add the public event description."></textarea>
+                        </div>
+
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="create-start-at">Start</label>
+                                <input type="datetime-local" id="create-start-at" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="create-end-at">End</label>
+                                <input type="datetime-local" id="create-end-at" required>
+                            </div>
+                        </div>
+
+                        <div class="section-card">
+                            <div class="section-card-head">
+                                <h3>Venue</h3>
+                            </div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="create-venue-name">Venue Name</label>
+                                    <input type="text" id="create-venue-name" placeholder="Singapore Indoor Stadium" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="create-venue-address">Address</label>
+                                    <input type="text" id="create-venue-address" placeholder="2 Stadium Walk">
+                                </div>
+                                <div class="form-group">
+                                    <label for="create-venue-city">City</label>
+                                    <input type="text" id="create-venue-city" placeholder="Singapore">
+                                </div>
+                                <div class="form-group">
+                                    <label for="create-venue-country">Country</label>
+                                    <input type="text" id="create-venue-country" placeholder="Singapore">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="section-card">
+                            <div class="section-card-head">
+                                <h3>Pricing Tiers</h3>
+                                <button type="button" class="btn-secondary" onclick="addPricingTierRow()">Add Tier</button>
+                            </div>
+                            <p class="helper-text">These tier codes are also used by the seat sections below.</p>
+                            <div id="pricing-tier-rows" class="stack-list"></div>
+                            <datalist id="tier-code-options"></datalist>
+                        </div>
+
+                        <div class="section-card">
+                            <div class="section-card-head">
+                                <h3>Seat Sections</h3>
+                                <button type="button" class="btn-secondary" onclick="addSeatSectionRow()">Add Section</button>
+                            </div>
+                            <p class="helper-text">Published events need positive capacities so the composite can bootstrap seat inventory.</p>
+                            <div id="seat-section-rows" class="stack-list"></div>
+                        </div>
+
+                        <div id="create-event-success" class="success-msg hidden"></div>
+                        <div id="create-event-error" class="error-msg hidden"></div>
+                        <div id="create-event-loading" class="loading-msg hidden">Creating event through Kong...</div>
+
+                        <button type="submit" class="btn-primary full-width">Create Event</button>
+                    </form>
+                </div>
+
+                <div class="manager-events-panel">
+                    <div class="panel-head manager-events-head">
+                        <div>
+                            <h2>My Events</h2>
+                            <p class="form-subtitle">Loaded from the event service through Kong. Edit actions are sent to the composite.</p>
+                        </div>
+                        <button type="button" class="btn-secondary" onclick="loadManagedEvents()">Refresh</button>
+                    </div>
+
+                    <div id="loading" class="loading-msg">Loading your events...</div>
+                    <div id="events-list" class="stack-list"></div>
+                    <div id="no-events" class="empty-state hidden">No events found for this manager yet.</div>
+                    <div id="error-msg" class="error-msg hidden">Failed to load events from the gateway.</div>
+                </div>
+            </section>
         </div>
     </main>
 
-    <!-- EDIT EVENT MODAL -->
     <div id="edit-modal" class="modal hidden">
-        <div class="modal-content">
-            <h3>Edit Event</h3>
+        <div class="modal-content modal-content-wide">
+            <h3>Edit Event Details</h3>
+            <p class="helper-text">This editor updates title, description, venue, timing, and publish status. Seat configuration changes are intentionally excluded here because the current composite only supports metadata edits reliably after inventory bootstrap.</p>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="edit-title">Title</label>
+                    <input type="text" id="edit-title">
+                </div>
+                <div class="form-group">
+                    <label for="edit-status">Status</label>
+                    <select id="edit-status">
+                        <option value="DRAFT">Draft</option>
+                        <option value="PUBLISHED">Published</option>
+                    </select>
+                </div>
+            </div>
 
             <div class="form-group">
-                <label for="edit-name">Event Name</label>
-                <input type="text" id="edit-name">
-            </div>
-            <div class="form-group">
-                <label for="edit-venue">Venue</label>
-                <input type="text" id="edit-venue">
-            </div>
-            <div class="form-group">
-                <label for="edit-date">Date</label>
-                <input type="date" id="edit-date">
-            </div>
-            <div class="form-group">
-                <label for="edit-price">Price ($)</label>
-                <input type="number" id="edit-price" min="0">
+                <label for="edit-description">Description</label>
+                <textarea id="edit-description" rows="3"></textarea>
             </div>
 
-            <div id="edit-success" class="success-msg hidden">✅ Event updated successfully!</div>
-            <div id="edit-error" class="error-msg hidden">Update failed. Please try again.</div>
-            <div id="edit-loading" class="loading-msg hidden">Saving changes...</div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="edit-start-at">Start</label>
+                    <input type="datetime-local" id="edit-start-at">
+                </div>
+                <div class="form-group">
+                    <label for="edit-end-at">End</label>
+                    <input type="datetime-local" id="edit-end-at">
+                </div>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="edit-venue-name">Venue Name</label>
+                    <input type="text" id="edit-venue-name">
+                </div>
+                <div class="form-group">
+                    <label for="edit-venue-address">Address</label>
+                    <input type="text" id="edit-venue-address">
+                </div>
+                <div class="form-group">
+                    <label for="edit-venue-city">City</label>
+                    <input type="text" id="edit-venue-city">
+                </div>
+                <div class="form-group">
+                    <label for="edit-venue-country">Country</label>
+                    <input type="text" id="edit-venue-country">
+                </div>
+            </div>
+
+            <div id="edit-success" class="success-msg hidden"></div>
+            <div id="edit-error" class="error-msg hidden"></div>
+            <div id="edit-loading" class="loading-msg hidden">Saving changes through Kong...</div>
 
             <div class="modal-buttons">
                 <button class="btn-primary" onclick="confirmEdit()">Save Changes</button>
@@ -75,190 +220,353 @@
         </div>
     </div>
 
-    <!-- CANCEL EVENT MODAL -->
-    <div id="cancel-modal" class="modal hidden">
-        <div class="modal-content">
-            <h3>Cancel Event</h3>
-            <p id="cancel-modal-message">Are you sure you want to cancel this event?</p>
-            <p class="warning-text">
-                ⚠️ This will notify all ticket holders and trigger automatic refunds.
-            </p>
-
-            <div id="cancel-success" class="success-msg hidden">✅ Event cancelled. Refunds initiated!</div>
-            <div id="cancel-error" class="error-msg hidden">Cancellation failed. Please try again.</div>
-            <div id="cancel-loading" class="loading-msg hidden">Cancelling event...</div>
-
-            <div class="modal-buttons">
-                <button class="btn-danger" id="confirm-cancel-btn" onclick="confirmCancel()">
-                    Yes, Cancel Event
-                </button>
-                <button class="btn-secondary" onclick="closeCancelModal()">Go Back</button>
-            </div>
-        </div>
-    </div>
-
     <script src="js/api.js"></script>
     <script>
+        const managerUser = JSON.parse(sessionStorage.getItem("user"));
+        const managerId = managerUser?.userId || managerUser?.id;
+        let managedEvents = [];
+        let editingEventId = null;
 
-        const user = JSON.parse(sessionStorage.getItem("user"));
-        let selectedEventId = null;
+        const defaultPricingTiers = [
+            { code: "VIP", name: "VIP", price: 188, currency: "SGD" },
+            { code: "CAT1", name: "Category 1", price: 128, currency: "SGD" },
+            { code: "CAT2", name: "Category 2", price: 88, currency: "SGD" }
+        ];
 
-        // Guard — managers only
-        if (!user || user.role !== "manager") {
-            document.getElementById("access-denied").classList.remove("hidden");
-        } else {
-            document.getElementById("nav-user").textContent = `👤 ${user.name}`;
-            document.getElementById("manager-view").classList.remove("hidden");
-            loadManagedEvents();
+        const defaultSeatSections = [
+            { code: "A1", name: "Floor Left", tierCode: "VIP", capacity: 50 },
+            { code: "B1", name: "Lower Bowl", tierCode: "CAT1", capacity: 120 },
+            { code: "C1", name: "Upper Bowl", tierCode: "CAT2", capacity: 200 }
+        ];
+
+        function escapeHtml(value) {
+            return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                "\"": "&quot;",
+                "'": "&#39;"
+            }[char]));
         }
 
-        // Load events this manager owns — calls GET /user/managing
-        async function loadManagedEvents() {
-            try {
-                const data = await getManagingEvents(user.userId);
-                document.getElementById("loading").classList.add("hidden");
+        function toDatetimeLocal(isoString) {
+            if (!isoString) {
+                return "";
+            }
 
-                if (!data.events || data.events.length === 0) {
-                    document.getElementById("no-events").classList.remove("hidden");
+            const date = new Date(isoString);
+            const offset = date.getTimezoneOffset();
+            const local = new Date(date.getTime() - offset * 60 * 1000);
+            return local.toISOString().slice(0, 16);
+        }
+
+        function toIsoString(value) {
+            return value ? new Date(value).toISOString() : null;
+        }
+
+        function showMessage(elementId, text) {
+            const element = document.getElementById(elementId);
+            element.textContent = text;
+            element.classList.remove("hidden");
+        }
+
+        function hideMessages(prefix) {
+            ["success", "error", "loading"].forEach((state) => {
+                const element = document.getElementById(`${prefix}-${state}`);
+                if (element) {
+                    element.classList.add("hidden");
+                    if (state !== "loading") {
+                        element.textContent = "";
+                    }
+                }
+            });
+        }
+
+        function createPricingTierRow(tier = {}) {
+            const row = document.createElement("div");
+            row.className = "stack-row";
+            row.innerHTML = `
+                <div class="form-grid compact-grid">
+                    <div class="form-group">
+                        <label>Code</label>
+                        <input type="text" class="tier-code" value="${escapeHtml(tier.code || "")}" placeholder="VIP">
+                    </div>
+                    <div class="form-group">
+                        <label>Name</label>
+                        <input type="text" class="tier-name" value="${escapeHtml(tier.name || "")}" placeholder="VIP">
+                    </div>
+                    <div class="form-group">
+                        <label>Price</label>
+                        <input type="number" class="tier-price" value="${escapeHtml(tier.price ?? "")}" min="0" step="0.01" placeholder="188">
+                    </div>
+                    <div class="form-group">
+                        <label>Currency</label>
+                        <input type="text" class="tier-currency" value="${escapeHtml(tier.currency || "SGD")}" placeholder="SGD">
+                    </div>
+                </div>
+                <button type="button" class="btn-danger stack-row-action" onclick="this.closest('.stack-row').remove(); syncTierCodeOptions();">Remove</button>
+            `;
+            return row;
+        }
+
+        function createSeatSectionRow(section = {}) {
+            const row = document.createElement("div");
+            row.className = "stack-row";
+            row.innerHTML = `
+                <div class="form-grid compact-grid">
+                    <div class="form-group">
+                        <label>Section Code</label>
+                        <input type="text" class="section-code" value="${escapeHtml(section.code || "")}" placeholder="A1">
+                    </div>
+                    <div class="form-group">
+                        <label>Name</label>
+                        <input type="text" class="section-name" value="${escapeHtml(section.name || "")}" placeholder="Floor Left">
+                    </div>
+                    <div class="form-group">
+                        <label>Tier Code</label>
+                        <input type="text" class="section-tier-code" list="tier-code-options" value="${escapeHtml(section.tierCode || "")}" placeholder="VIP">
+                    </div>
+                    <div class="form-group">
+                        <label>Capacity</label>
+                        <input type="number" class="section-capacity" value="${escapeHtml(section.capacity ?? "")}" min="1" step="1" placeholder="50">
+                    </div>
+                </div>
+                <button type="button" class="btn-danger stack-row-action" onclick="this.closest('.stack-row').remove();">Remove</button>
+            `;
+            return row;
+        }
+
+        function syncTierCodeOptions() {
+            const datalist = document.getElementById("tier-code-options");
+            const codes = [...document.querySelectorAll(".tier-code")]
+                .map((input) => input.value.trim().toUpperCase())
+                .filter(Boolean);
+
+            datalist.innerHTML = [...new Set(codes)]
+                .map((code) => `<option value="${escapeHtml(code)}"></option>`)
+                .join("");
+        }
+
+        function addPricingTierRow(tier = {}) {
+            document.getElementById("pricing-tier-rows").appendChild(createPricingTierRow(tier));
+            syncTierCodeOptions();
+        }
+
+        function addSeatSectionRow(section = {}) {
+            document.getElementById("seat-section-rows").appendChild(createSeatSectionRow(section));
+        }
+
+        function resetCreateForm() {
+            document.getElementById("create-event-form").reset();
+            document.getElementById("pricing-tier-rows").innerHTML = "";
+            document.getElementById("seat-section-rows").innerHTML = "";
+
+            defaultPricingTiers.forEach((tier) => addPricingTierRow(tier));
+            defaultSeatSections.forEach((section) => addSeatSectionRow(section));
+
+            const now = new Date();
+            const start = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+            start.setMinutes(0, 0, 0);
+            const end = new Date(start.getTime() + 3 * 60 * 60 * 1000);
+
+            document.getElementById("create-start-at").value = toDatetimeLocal(start.toISOString());
+            document.getElementById("create-end-at").value = toDatetimeLocal(end.toISOString());
+            document.getElementById("create-status").value = "DRAFT";
+            document.getElementById("create-description").value = "";
+            hideMessages("create-event");
+        }
+
+        function readPricingTiers() {
+            return [...document.querySelectorAll("#pricing-tier-rows .stack-row")].map((row) => ({
+                code: row.querySelector(".tier-code").value.trim().toUpperCase(),
+                name: row.querySelector(".tier-name").value.trim(),
+                price: Number(row.querySelector(".tier-price").value),
+                currency: row.querySelector(".tier-currency").value.trim().toUpperCase() || "SGD"
+            }));
+        }
+
+        function readSeatSections() {
+            return [...document.querySelectorAll("#seat-section-rows .stack-row")].map((row) => ({
+                code: row.querySelector(".section-code").value.trim().toUpperCase(),
+                name: row.querySelector(".section-name").value.trim(),
+                tierCode: row.querySelector(".section-tier-code").value.trim().toUpperCase(),
+                capacity: Number(row.querySelector(".section-capacity").value)
+            }));
+        }
+
+        function buildCreatePayload() {
+            return {
+                managerId,
+                title: document.getElementById("create-title").value.trim(),
+                description: document.getElementById("create-description").value.trim(),
+                startAt: toIsoString(document.getElementById("create-start-at").value),
+                endAt: toIsoString(document.getElementById("create-end-at").value),
+                status: document.getElementById("create-status").value,
+                venue: {
+                    name: document.getElementById("create-venue-name").value.trim(),
+                    address: document.getElementById("create-venue-address").value.trim(),
+                    city: document.getElementById("create-venue-city").value.trim(),
+                    country: document.getElementById("create-venue-country").value.trim()
+                },
+                pricingTiers: readPricingTiers(),
+                seatSections: readSeatSections()
+            };
+        }
+
+        function buildEditPayload() {
+            return {
+                managerId,
+                title: document.getElementById("edit-title").value.trim(),
+                description: document.getElementById("edit-description").value.trim(),
+                startAt: toIsoString(document.getElementById("edit-start-at").value),
+                endAt: toIsoString(document.getElementById("edit-end-at").value),
+                status: document.getElementById("edit-status").value,
+                venue: {
+                    name: document.getElementById("edit-venue-name").value.trim(),
+                    address: document.getElementById("edit-venue-address").value.trim(),
+                    city: document.getElementById("edit-venue-city").value.trim(),
+                    country: document.getElementById("edit-venue-country").value.trim()
+                }
+            };
+        }
+
+        function renderManagedEvents(events) {
+            const list = document.getElementById("events-list");
+            list.innerHTML = "";
+
+            events.forEach((event) => {
+                const card = document.createElement("article");
+                card.className = "event-manage-card manager-event-card";
+                card.innerHTML = `
+                    <div class="event-info">
+                        <div class="event-card-topline">
+                            <span class="ticket-status status-${escapeHtml(event.statusKey)}">${escapeHtml(event.statusLabel)}</span>
+                            <span class="event-aux">${escapeHtml(event.priceLabel)}</span>
+                        </div>
+                        <h3>${escapeHtml(event.title)}</h3>
+                        <p>${escapeHtml(event.venue)}</p>
+                        <p>${escapeHtml(event.dateTimeLabel)}</p>
+                        <p class="event-aux">
+                            ${event.pricingTiers.length} tier(s) · ${event.seatSections.length} section(s)
+                        </p>
+                    </div>
+                    <div class="ticket-actions">
+                        <button class="btn-primary" onclick="openEditModal('${event.id}')">Edit Details</button>
+                        <button class="btn-secondary" onclick="window.location.href='index.html'">Browse</button>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        async function loadManagedEvents() {
+            const loading = document.getElementById("loading");
+            const empty = document.getElementById("no-events");
+            const error = document.getElementById("error-msg");
+
+            loading.classList.remove("hidden");
+            empty.classList.add("hidden");
+            error.classList.add("hidden");
+
+            try {
+                managedEvents = await getManagingEvents(managerId);
+                loading.classList.add("hidden");
+
+                if (!managedEvents.length) {
+                    empty.classList.remove("hidden");
+                    document.getElementById("events-list").innerHTML = "";
                     return;
                 }
 
-                const list = document.getElementById("events-list");
-                data.events.forEach(event => {
-                    const card = document.createElement("div");
-                    card.className = "event-manage-card";
-                    card.innerHTML = `
-                        <div class="event-info">
-                            <h3>${event.name}</h3>
-                            <p>📍 ${event.venue}</p>
-                            <p>📅 ${event.date}</p>
-                            <p>💰 $${event.price}</p>
-                            <span class="ticket-status status-${event.status}">
-                                ${event.status}
-                            </span>
-                        </div>
-                        <div class="ticket-actions">
-                            <button 
-                                class="btn-primary"
-                                onclick="openEditModal(${JSON.stringify(event).replace(/"/g, '&quot;')})"
-                                ${event.status === 'cancelled' ? 'disabled' : ''}
-                            >
-                                ✏️ Edit
-                            </button>
-                            <button 
-                                class="btn-danger"
-                                onclick="openCancelModal('${event.eventId}', '${event.name}')"
-                                ${event.status === 'cancelled' ? 'disabled' : ''}
-                            >
-                                ❌ Cancel Event
-                            </button>
-                        </div>
-                    `;
-                    list.appendChild(card);
-                });
-
+                renderManagedEvents(managedEvents);
             } catch (err) {
-                document.getElementById("loading").classList.add("hidden");
-                document.getElementById("error-msg").classList.remove("hidden");
+                loading.classList.add("hidden");
+                error.textContent = err.message || "Failed to load events from the gateway.";
+                error.classList.remove("hidden");
             }
         }
 
-        // ── EDIT MODAL ────────────────────────────────────────
-        function openEditModal(event) {
-            selectedEventId = event.eventId;
-            document.getElementById("edit-name").value = event.name;
-            document.getElementById("edit-venue").value = event.venue;
-            document.getElementById("edit-date").value = event.date;
-            document.getElementById("edit-price").value = event.price;
-            document.getElementById("edit-success").classList.add("hidden");
-            document.getElementById("edit-error").classList.add("hidden");
+        function openEditModal(eventId) {
+            const event = managedEvents.find((row) => row.id === eventId);
+            if (!event) {
+                return;
+            }
+
+            editingEventId = eventId;
+            document.getElementById("edit-title").value = event.title;
+            document.getElementById("edit-description").value = event.description || "";
+            document.getElementById("edit-start-at").value = toDatetimeLocal(event.startAt);
+            document.getElementById("edit-end-at").value = toDatetimeLocal(event.endAt);
+            document.getElementById("edit-status").value = event.statusLabel;
+            document.getElementById("edit-venue-name").value = event.venueDetails.name || "";
+            document.getElementById("edit-venue-address").value = event.venueDetails.address || "";
+            document.getElementById("edit-venue-city").value = event.venueDetails.city || "";
+            document.getElementById("edit-venue-country").value = event.venueDetails.country || "";
+            hideMessages("edit");
             document.getElementById("edit-modal").classList.remove("hidden");
         }
 
         function closeEditModal() {
+            editingEventId = null;
             document.getElementById("edit-modal").classList.add("hidden");
-            selectedEventId = null;
         }
 
-        // EDIT — calls PUT /events/eventId/edit via Edit Event Composite
         async function confirmEdit() {
-            if (!selectedEventId) return;
+            if (!editingEventId) {
+                return;
+            }
 
-            const updatedData = {
-                name: document.getElementById("edit-name").value.trim(),
-                venue: document.getElementById("edit-venue").value.trim(),
-                date: document.getElementById("edit-date").value,
-                price: parseFloat(document.getElementById("edit-price").value)
-            };
-
+            hideMessages("edit");
             document.getElementById("edit-loading").classList.remove("hidden");
 
             try {
-                const data = await updateEvent(selectedEventId, updatedData);
+                const response = await updateEvent(editingEventId, buildEditPayload());
                 document.getElementById("edit-loading").classList.add("hidden");
+                showMessage("edit-success", `Updated "${response.event.title}" through the composite.`);
+                await loadManagedEvents();
 
-                if (data && data.eventId) {
-                    document.getElementById("edit-success").classList.remove("hidden");
-                    setTimeout(() => {
-                        closeEditModal();
-                        location.reload();
-                    }, 2000);
-                } else {
-                    document.getElementById("edit-error").classList.remove("hidden");
-                }
-
+                setTimeout(() => {
+                    closeEditModal();
+                }, 1200);
             } catch (err) {
                 document.getElementById("edit-loading").classList.add("hidden");
-                document.getElementById("edit-error").classList.remove("hidden");
+                showMessage("edit-error", err.message || "Update failed.");
             }
         }
 
-        // ── CANCEL MODAL ──────────────────────────────────────
-        function openCancelModal(eventId, eventName) {
-            selectedEventId = eventId;
-            document.getElementById("cancel-modal-message").textContent =
-                `Are you sure you want to cancel "${eventName}"?`;
-            document.getElementById("cancel-success").classList.add("hidden");
-            document.getElementById("cancel-error").classList.add("hidden");
-            document.getElementById("cancel-loading").classList.add("hidden");
-            document.getElementById("confirm-cancel-btn").disabled = false;
-            document.getElementById("cancel-modal").classList.remove("hidden");
-        }
-
-        function closeCancelModal() {
-            document.getElementById("cancel-modal").classList.add("hidden");
-            selectedEventId = null;
-        }
-
-        // CANCEL — calls POST /events/eventId/cancel via Edit Event Composite
-        async function confirmCancel() {
-            if (!selectedEventId) return;
-
-            document.getElementById("cancel-loading").classList.remove("hidden");
-            document.getElementById("confirm-cancel-btn").disabled = true;
+        document.getElementById("create-event-form").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            hideMessages("create-event");
+            document.getElementById("create-event-loading").classList.remove("hidden");
 
             try {
-                const data = await cancelEvent(selectedEventId);
-                document.getElementById("cancel-loading").classList.add("hidden");
-
-                if (data && data.eventId) {
-                    document.getElementById("cancel-success").classList.remove("hidden");
-                    setTimeout(() => {
-                        closeCancelModal();
-                        location.reload();
-                    }, 2000);
-                } else {
-                    document.getElementById("cancel-error").classList.remove("hidden");
-                    document.getElementById("confirm-cancel-btn").disabled = false;
-                }
-
+                const response = await createManagerEvent(buildCreatePayload());
+                document.getElementById("create-event-loading").classList.add("hidden");
+                showMessage("create-event-success", `Created "${response.event.title}" through the composite.`);
+                resetCreateForm();
+                await loadManagedEvents();
             } catch (err) {
-                document.getElementById("cancel-loading").classList.add("hidden");
-                document.getElementById("cancel-error").classList.remove("hidden");
-                document.getElementById("confirm-cancel-btn").disabled = false;
+                document.getElementById("create-event-loading").classList.add("hidden");
+                showMessage("create-event-error", err.message || "Event creation failed.");
             }
-        }
+        });
 
+        document.addEventListener("input", (event) => {
+            if (event.target.classList.contains("tier-code")) {
+                syncTierCodeOptions();
+            }
+        });
+
+        if (!managerUser || managerUser.role !== "manager") {
+            document.getElementById("access-denied").classList.remove("hidden");
+        } else {
+            document.getElementById("nav-login").classList.add("hidden");
+            document.getElementById("nav-user").classList.remove("hidden");
+            document.getElementById("nav-user").textContent = managerUser.name;
+            document.getElementById("manager-view").classList.remove("hidden");
+            resetCreateForm();
+            loadManagedEvents();
+        }
     </script>
 
 </body>
