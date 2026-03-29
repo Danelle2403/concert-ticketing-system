@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 import os
+import re
 import uuid
 import requests
 
@@ -21,7 +22,29 @@ def req_json(method, url, payload=None, timeout=8):
     return res.status_code, body
 
 
+def normalize_prefixed_id(value, prefixes):
+    if value is None:
+        return value
+
+    text = str(value).strip()
+    for prefix in prefixes:
+        match = re.fullmatch(rf"{prefix}-(\d+)", text, flags=re.IGNORECASE)
+        if match:
+            return str(int(match.group(1)))
+
+    return text
+
+
+def normalize_ticket_id(value):
+    return normalize_prefixed_id(value, ("tkt",))
+
+
+def normalize_event_id(value):
+    return normalize_prefixed_id(value, ("con",))
+
+
 def refund_single(ticket_id):
+    ticket_id = normalize_ticket_id(ticket_id)
     code, ticket = req_json("GET", f"{USER_SERVICE_URL}/user/ticket/{ticket_id}")
     if code != 200:
         return False, {"error": "Ticket not found"}, 404
@@ -66,12 +89,13 @@ def health():
 
 @app.route("/refunds/<ticketId>", methods=["POST"])
 def refund_ticket(ticketId):
-    ok, payload, code = refund_single(ticketId)
+    ok, payload, code = refund_single(normalize_ticket_id(ticketId))
     return jsonify(payload), code
 
 
 @app.route("/refunds/event/<eventId>", methods=["POST"])
 def refund_event(eventId):
+    eventId = normalize_event_id(eventId)
     code, data = req_json(
         "GET",
         f"{USER_SERVICE_URL}/user/tickets/by-event/{eventId}?status=active",

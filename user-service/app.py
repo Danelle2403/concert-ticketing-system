@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import mysql.connector
 import os
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -24,9 +25,34 @@ def normalize_user(user):
     return user
 
 
+def normalize_prefixed_id(value, prefixes):
+    if value is None:
+        return value
+
+    text = str(value).strip()
+    for prefix in prefixes:
+        match = re.fullmatch(rf"{prefix}-(\d+)", text, flags=re.IGNORECASE)
+        if match:
+            return str(int(match.group(1)))
+
+    return text
+
+
+def normalize_user_id(value):
+    return normalize_prefixed_id(value, ("fan",))
+
+
+def normalize_ticket_id(value):
+    return normalize_prefixed_id(value, ("tkt",))
+
+
+def normalize_event_id(value):
+    return normalize_prefixed_id(value, ("con",))
+
+
 def parse_int(value, field_name):
     try:
-        return int(value)
+        return int(normalize_user_id(value))
     except (TypeError, ValueError):
         raise ValueError(f"{field_name} must be an integer")
 
@@ -134,24 +160,61 @@ def seed_defaults():
         cursor = db.cursor()
         cursor.execute(
             """
-            INSERT INTO users (id, name, email, role)
-            VALUES
-              (1, 'Alice Fan', 'fan@example.com', 'fan'),
-              (2, 'Maya Manager', 'manager@example.com', 'manager')
-            ON DUPLICATE KEY UPDATE
-              name = VALUES(name),
-              role = VALUES(role)
+            DELETE FROM user_tickets
+            WHERE ticketId IN ('1', '2', '3', '456')
+               OR eventId IN ('1', '2', '789')
+               OR userId IN (1, 2, 3, 123)
             """
         )
         cursor.execute(
-            "DELETE FROM managed_events WHERE managerId = 2 AND eventId IN ('EVT1001', 'EVT1002')"
+            """
+            DELETE FROM managed_events
+            WHERE eventId IN ('EVT1001', 'EVT1002', '1', '2', '789')
+            """
+        )
+        cursor.execute(
+            """
+            DELETE FROM users
+            WHERE id IN (1, 2, 3, 99, 123)
+               OR email IN (
+                    'fan@example.com',
+                    'fan2@example.com',
+                    'fan3@example.com',
+                    'manager@example.com',
+                    'legacyfan@example.com'
+               )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO users (id, name, email, role)
+            VALUES
+              (1, 'Alice Fan', 'fan@example.com', 'fan'),
+              (2, 'Noah Fan', 'fan2@example.com', 'fan'),
+              (3, 'Chloe Fan', 'fan3@example.com', 'fan'),
+              (99, 'Maya Manager', 'manager@example.com', 'manager'),
+              (123, 'Legacy Fan', 'legacyfan@example.com', 'fan')
+            """
         )
         cursor.execute(
             """
             INSERT INTO managed_events (managerId, eventId, name, venue, date, price, status)
             VALUES
-              (2, 'EVT1001', 'The Midnight World Tour', 'Marina Bay Sands, Singapore', '2026-08-15', 88.00, 'active'),
-              (2, 'EVT1002', 'Neon Bloom Live', 'Singapore Indoor Stadium', '2026-09-22', 98.00, 'active')
+              (99, 'EVT1001', 'The Midnight World Tour', 'Marina Bay Sands, Singapore', '2026-08-15', 88.00, 'active'),
+              (99, 'EVT1002', 'Neon Bloom Live', 'Singapore Indoor Stadium', '2026-09-22', 98.00, 'active'),
+              (99, '1', 'Pulse Arena Nights', 'Capitol Theatre, Singapore', '2026-04-18', 80.00, 'active'),
+              (99, '2', 'Skyline VIP Session', 'Singapore Indoor Stadium', '2026-05-02', 200.00, 'active'),
+              (99, '789', 'Harbour Lights Reunion', 'The Star Theatre, Singapore', '2026-03-10', 150.00, 'cancelled')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO user_tickets (userId, ticketId, eventId, eventName, venue, date, status)
+            VALUES
+              (123, '456', '789', 'Harbour Lights Reunion', 'The Star Theatre, Singapore', '2026-03-10', 'refunded'),
+              (1, '1', '1', 'Pulse Arena Nights', 'Capitol Theatre, Singapore', '2026-04-18', 'cancelled'),
+              (2, '2', '1', 'Pulse Arena Nights', 'Capitol Theatre, Singapore', '2026-04-18', 'active'),
+              (3, '3', '2', 'Skyline VIP Session', 'Singapore Indoor Stadium', '2026-05-02', 'active')
             """
         )
         db.commit()
@@ -231,8 +294,8 @@ def add_user_ticket():
         data = request.get_json() or {}
 
         user_id = parse_int(data.get("userId"), "userId")
-        ticket_id = data.get("ticketId")
-        event_id = data.get("eventId")
+        ticket_id = normalize_ticket_id(data.get("ticketId"))
+        event_id = normalize_event_id(data.get("eventId"))
         event_name = data.get("eventName")
         venue = data.get("venue")
         date = data.get("date")
@@ -286,6 +349,7 @@ def add_user_ticket():
 def get_ticket(ticketId):
     db = None
     try:
+        ticketId = normalize_ticket_id(ticketId)
         db = get_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute("SELECT * FROM user_tickets WHERE ticketId = %s", (ticketId,))
@@ -309,6 +373,7 @@ def get_ticket(ticketId):
 def update_ticket_status(ticketId):
     db = None
     try:
+        ticketId = normalize_ticket_id(ticketId)
         data = request.get_json() or {}
         status = data.get("status")
         if not status:
@@ -342,6 +407,7 @@ def update_ticket_status(ticketId):
 def get_tickets_by_event(eventId):
     db = None
     try:
+        eventId = normalize_event_id(eventId)
         status = request.args.get("status")
 
         db = get_db()
@@ -370,6 +436,7 @@ def get_tickets_by_event(eventId):
 def update_managed_event(eventId):
     db = None
     try:
+        eventId = normalize_event_id(eventId)
         data = request.get_json() or {}
 
         db = get_db()
@@ -414,6 +481,7 @@ def update_managed_event(eventId):
 def cancel_managed_event(eventId):
     db = None
     try:
+        eventId = normalize_event_id(eventId)
         db = get_db()
         cursor = db.cursor(dictionary=True)
 
