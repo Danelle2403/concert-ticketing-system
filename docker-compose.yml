@@ -181,10 +181,33 @@ services:
       - EVENT_SERVICE_URL=http://event-service:5000
       - USER_SERVICE_URL=http://user-service:5000
       - SEAT_INVENTORY_URL=http://seat-inventory:5000
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/%2F
+      - NOTIFICATION_EXCHANGE=concert.events
+      - NOTIFICATION_ROUTING_KEY=event.updated
     depends_on:
       - event-service
       - user-service
       - seat-inventory
+      - rabbitmq
+    networks:
+      - ticketing-net
+
+  # ── NOTIFICATION WRAPPER ────────────────────────────────────
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "5013:5000"
+    environment:
+      - USER_SERVICE_URL=http://user-service:5000
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/%2F
+      - NOTIFICATION_EXCHANGE=concert.events
+      - NOTIFICATION_QUEUE=notification.event-updated
+      - NOTIFICATION_ROUTING_KEY=event.updated
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
+    depends_on:
+      - user-service
+      - rabbitmq
     networks:
       - ticketing-net
 

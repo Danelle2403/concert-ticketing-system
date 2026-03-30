@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+import event_bus
 import service_clients
 
 
@@ -209,6 +210,9 @@ def create_app(test_config=None):
         USER_SERVICE_URL=os.environ.get("USER_SERVICE_URL", "http://localhost:5001"),
         EVENT_SERVICE_URL=os.environ.get("EVENT_SERVICE_URL", "http://localhost:5002"),
         SEAT_INVENTORY_URL=os.environ.get("SEAT_INVENTORY_URL", "http://localhost:5004"),
+        RABBITMQ_URL=os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/%2F"),
+        NOTIFICATION_EXCHANGE=os.environ.get("NOTIFICATION_EXCHANGE", "concert.events"),
+        NOTIFICATION_ROUTING_KEY=os.environ.get("NOTIFICATION_ROUTING_KEY", "event.updated"),
         REQUEST_TIMEOUT_SECONDS=int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "8")),
     )
 
@@ -463,8 +467,25 @@ def create_app(test_config=None):
                 "integration": {
                     "seatInventoryEventId": seat_inventory_event_id,
                     "inventoryValidation": inventory_summary,
+                    "notificationQueued": False,
                 },
             }
+
+            notification_payload = event_bus.build_event_updated_message(current_event, event, manager)
+            if notification_payload["changes"]:
+                try:
+                    event_bus.publish_message(
+                        app.config["RABBITMQ_URL"],
+                        app.config["NOTIFICATION_EXCHANGE"],
+                        app.config["NOTIFICATION_ROUTING_KEY"],
+                        notification_payload,
+                    )
+                    response_payload["integration"]["notificationQueued"] = True
+                except Exception as error:
+                    warnings.append(
+                        f"Event update succeeded, but fan notifications were not queued: {error}"
+                    )
+
             write_audit_log(
                 "EDIT_EVENT",
                 "SUCCESS",

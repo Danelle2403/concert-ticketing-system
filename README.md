@@ -24,6 +24,19 @@ Make sure you have the following installed before running:
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - [Git](https://git-scm.com/)
 
+## Local Environment Setup
+Create a local `.env` file before starting the stack if you want real notification delivery:
+
+```bash
+cp .env.example .env
+```
+
+Required for SendGrid-backed notifications:
+- `SENDGRID_API_KEY`: your SendGrid API key with Mail Send permission
+- `SENDGRID_FROM_EMAIL`: a verified sender address or verified domain address in SendGrid
+
+If these are left blank, the notification wrapper still runs, but it switches to `log_only` mode and writes the notification payload to container logs instead of sending email.
+
 ## How to Run
 
 ### 1. Clone the repository
@@ -48,6 +61,7 @@ docker-compose up --build
 | Purchase Composite | http://localhost:5010 |
 | Refund Composite | http://localhost:5011 |
 | Edit Event Composite | http://localhost:5012 |
+| Notification Service | http://localhost:5013/health |
 | RabbitMQ Dashboard | http://localhost:15672 |
 
 ### 4. Seed demo users/events
@@ -93,6 +107,7 @@ concert-ticketing-system/
 ├── purchase-composite/        # Scenario 1 orchestration
 ├── refund-composite/          # Scenario 3 / ticket refund orchestration
 ├── create-edit-event-composite/ # Scenario 2 orchestration
+├── notification-service/      # SendGrid wrapper + RabbitMQ consumer
 ├── kong/                      # Kong declarative routes
 ├── docker-compose.yml
 └── README.md
@@ -145,7 +160,13 @@ concert-ticketing-system/
 |---|---|---|
 | GET | /health | Health check |
 | PUT | /events/<eventId>/edit | Scenario 2 edit orchestration |
-| POST | /events/<eventId>/cancel | Scenario 3 cancel orchestration |
+| POST | /events/create | Scenario 2 create orchestration |
+
+## API Endpoints — Notification Service
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /health | Health + consumer state |
+| POST | /notifications/event-updated | Internal/manual dispatch helper |
 
 ## API Endpoints — Seat Inventory Service
 | Method | Endpoint | Description |
@@ -162,5 +183,6 @@ concert-ticketing-system/
 ## Notes & Assumptions
 - The API Gateway runs on port 8000
 - Each service has its own database
-- OutSystems is used for the Payment Service
-- RabbitMQ handles all async messaging between services
+- The payment wrapper is deferred for now; Stripe integration is not wired into the purchase flow yet
+- RabbitMQ is used for async `event.updated` fanout from the create/edit composite to the notification wrapper
+- Event edit notifications are sent to users with issued tickets that are not currently `cancelled` or `refunded`
