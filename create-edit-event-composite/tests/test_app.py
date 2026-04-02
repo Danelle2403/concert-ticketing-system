@@ -454,3 +454,210 @@ def test_edit_bootstraps_inventory_when_missing(client, monkeypatch):
             {"seatCategory": "VIP", "totalSeats": 50, "availableSeats": 50},
         ],
     }
+
+
+def test_edit_queues_notification_when_event_details_change(client, monkeypatch):
+    test_client, _app = client
+
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "validate_manager_access",
+        lambda *_args, **_kwargs: {"id": 2, "name": "Maya Manager", "role": "manager"},
+    )
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "get_event_record",
+        lambda *_args, **_kwargs: {
+            "id": "evt-123",
+            "managerId": 2,
+            "title": "Old Title",
+            "status": "PUBLISHED",
+            "startAt": "2026-08-15T12:00:00.000Z",
+            "endAt": "2026-08-15T15:00:00.000Z",
+            "venue": {"name": "Old Venue"},
+        },
+    )
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "get_seat_inventory_inventory",
+        lambda *_args, **_kwargs: {
+            "seatInventoryEventId": "evt-123",
+            "inventory": [],
+        },
+    )
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "update_event_record",
+        lambda *_args, **_kwargs: {
+            "id": "evt-123",
+            "managerId": 2,
+            "title": "New Title",
+            "status": "PUBLISHED",
+            "startAt": "2026-08-15T12:00:00.000Z",
+            "endAt": "2026-08-15T15:00:00.000Z",
+            "venue": {"name": "New Venue"},
+            "changedBy": "manager-2",
+        },
+    )
+
+    captured_message = {}
+
+    def _publish_message(_rabbitmq_url, _exchange, _routing_key, payload):
+        captured_message.update(payload)
+
+    monkeypatch.setattr(composite_app.event_bus, "publish_message", _publish_message)
+
+    response = test_client.put(
+        "/manager/events/evt-123",
+        json={
+            "managerId": 2,
+            "title": "New Title",
+            "venue": {"name": "New Venue"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["data"]["integration"]["notificationQueued"] is True
+    assert captured_message["type"] == "event.updated"
+    assert captured_message["eventId"] == "evt-123"
+    assert [change["field"] for change in captured_message["changes"]] == ["title", "venue"]
+
+
+def test_edit_warns_when_notification_publish_fails(client, monkeypatch):
+    test_client, _app = client
+
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "validate_manager_access",
+        lambda *_args, **_kwargs: {"id": 2, "name": "Maya Manager", "role": "manager"},
+    )
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "get_event_record",
+        lambda *_args, **_kwargs: {
+            "id": "evt-123",
+            "managerId": 2,
+            "title": "Old Title",
+            "status": "PUBLISHED",
+            "startAt": "2026-08-15T12:00:00.000Z",
+            "endAt": "2026-08-15T15:00:00.000Z",
+            "venue": {"name": "Old Venue"},
+        },
+    )
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "get_seat_inventory_inventory",
+        lambda *_args, **_kwargs: {
+            "seatInventoryEventId": "evt-123",
+            "inventory": [],
+        },
+    )
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "update_event_record",
+        lambda *_args, **_kwargs: {
+            "id": "evt-123",
+            "managerId": 2,
+            "title": "New Title",
+            "status": "PUBLISHED",
+            "startAt": "2026-08-15T12:00:00.000Z",
+            "endAt": "2026-08-15T15:00:00.000Z",
+            "venue": {"name": "New Venue"},
+            "changedBy": "manager-2",
+        },
+    )
+
+    def _raise_publish_error(*_args, **_kwargs):
+        raise RuntimeError("rabbit unavailable")
+
+    monkeypatch.setattr(composite_app.event_bus, "publish_message", _raise_publish_error)
+
+    response = test_client.put(
+        "/manager/events/evt-123",
+        json={
+            "managerId": 2,
+            "title": "New Title",
+            "venue": {"name": "New Venue"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["data"]["integration"]["notificationQueued"] is False
+    assert "fan notifications were not queued" in payload["warnings"][0]
+
+
+def test_cancel_manager_event_queues_cancelled_notification(client, monkeypatch):
+    test_client, _app = client
+
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "validate_manager_access",
+        lambda *_args, **_kwargs: {
+            "id": 2,
+            "name": "Maya Manager",
+            "email": "manager@example.com",
+            "role": "manager",
+        },
+    )
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "get_event_record",
+        lambda *_args, **_kwargs: {
+            "id": "evt-cancelled",
+            "managerId": 2,
+            "title": "Cancelled Event",
+            "status": "PUBLISHED",
+            "startAt": "2026-08-15T12:00:00.000Z",
+            "endAt": "2026-08-15T15:00:00.000Z",
+            "venue": {"name": "Indoor Stadium"},
+            "cancelledAt": None,
+            "cancellationReason": None,
+        },
+    )
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "cancel_event_record",
+        lambda *_args, **_kwargs: {
+            "id": "evt-cancelled",
+            "managerId": 2,
+            "title": "Cancelled Event",
+            "status": "CANCELLED",
+            "startAt": "2026-08-15T12:00:00.000Z",
+            "endAt": "2026-08-15T15:00:00.000Z",
+            "venue": {"name": "Indoor Stadium"},
+            "changedBy": "manager-2",
+            "cancelledAt": "2026-08-01T09:00:00.000Z",
+            "cancellationReason": "Artist illness",
+        },
+    )
+
+    captured_routing_key = {}
+    captured_message = {}
+
+    def _publish_message(_rabbitmq_url, _exchange, routing_key, payload):
+        captured_routing_key["value"] = routing_key
+        captured_message.update(payload)
+
+    monkeypatch.setattr(composite_app.event_bus, "publish_message", _publish_message)
+
+    response = test_client.post(
+        "/manager/events/evt-cancelled/cancel",
+        json={
+            "managerId": 2,
+            "reason": "Artist illness",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["data"]["integration"]["notificationQueued"] is True
+    assert payload["data"]["integration"]["refundFlow"]["provider"] == "stripe"
+    assert payload["data"]["integration"]["refundFlow"]["requestRequired"] is False
+    assert payload["data"]["integration"]["refundFlow"]["status"] == "planned"
+    assert captured_routing_key["value"] == "event.cancelled"
+    assert captured_message["type"] == "event.cancelled"
+    assert captured_message["eventId"] == "evt-cancelled"
+    assert captured_message["refundInfo"]["provider"] == "stripe"
+    assert captured_message["refundInfo"]["requestRequired"] is False

@@ -117,6 +117,18 @@ def update_event_record(event_service_url, event_id, event_payload, timeout):
     return unwrap_data(body)
 
 
+def cancel_event_record(event_service_url, event_id, cancel_payload, timeout):
+    code, body = request_json(
+        "POST",
+        f"{event_service_url}/events/{event_id}/cancel",
+        payload=cancel_payload,
+        timeout=timeout,
+    )
+    if code != 200:
+        raise ServiceError(code, "EVENT_CANCEL_FAILED", "Event Service rejected event cancellation", body)
+    return unwrap_data(body)
+
+
 def get_event_record(event_service_url, event_id, timeout):
     code, body = request_json("GET", f"{event_service_url}/events/{event_id}", timeout=timeout)
     if code != 200:
