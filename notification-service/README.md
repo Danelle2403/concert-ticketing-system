@@ -41,7 +41,7 @@ The service is intended to run through the repo root `docker-compose.yml` and li
 
 ```bash
 cd notification-service
-pytest
+../.venv/bin/python -m pytest -q
 ```
 
 ## Smoke test

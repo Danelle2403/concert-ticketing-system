@@ -47,5 +47,5 @@ curl -X POST http://localhost:5014/refunds \
 
 ```bash
 cd payment-service
-pytest
+../.venv/bin/python -m pytest -q
 ```

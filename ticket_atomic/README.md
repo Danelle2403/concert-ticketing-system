@@ -1,4 +1,4 @@
-# 🎟️ Ticket Microservice
+# Ticket Atomic Service
 
 Atomic Flask microservice for ticket issuance and validation, backed by PostgreSQL.
 
@@ -101,19 +101,26 @@ Invalidate a ticket (one-way, irreversible).
 ---
 
 ### `GET /health`
-Liveness probe — also acts as a Supabase keep-alive ping.
+Liveness probe that also ensures the local schema exists.
 
 ---
 
 ## Project Structure
 
 ```
-ticket-service/
+ticket_atomic/
 ├── app.py              # Flask application (all routes)
 ├── requirements.txt    # Python dependencies
 ├── Dockerfile          # Container image
 ├── docker-compose.yml  # Compose config
-├── .env.example        # Environment variable template
 ├── init.sql            # One-time DB schema setup
+├── tests/              # Pytest coverage
 └── README.md
+```
+
+## Local tests
+
+```bash
+cd ticket_atomic
+../.venv/bin/python -m pytest -q
 ```

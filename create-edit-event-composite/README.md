@@ -43,6 +43,7 @@ Environment variables used by this service:
 - `USER_SERVICE_URL`
 - `EVENT_SERVICE_URL`
 - `SEAT_INVENTORY_URL`
+- `REFUND_SERVICE_URL`
 - `RABBITMQ_URL`
 - `NOTIFICATION_EXCHANGE`
 - `EVENT_UPDATED_ROUTING_KEY`
@@ -55,8 +56,9 @@ The composite listens on `http://localhost:5012`.
 This seed path assumes:
 
 - User Service is on `localhost:5001`
-- Event Service is on `localhost:5002`
+- Event Service is on `localhost:5003`
 - Seat Inventory is on `localhost:5004`
+- Create/Edit Event Composite is on `localhost:5012`
 
 ```bash
 cd create-edit-event-composite
@@ -67,11 +69,12 @@ python3 seed_dummy_data.py
 
 ```bash
 cd create-edit-event-composite
-pytest
+../.venv/bin/python -m pytest -q
 ```
 
 ## Notification behavior
 
 - Edit requests publish `event.updated` only when tracked event fields actually change
 - Cancel requests publish `event.cancelled` with refund guidance indicating Stripe is the planned provider
+- Cancel responses include a planned `refund-composite` endpoint for later orchestration work
 - If RabbitMQ publish fails, the event change still succeeds and the API response includes a warning instead of rolling back

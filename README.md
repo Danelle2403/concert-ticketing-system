@@ -112,6 +112,13 @@ python -m pytest -q create-edit-event-composite/tests
 
 Use the same pattern for `user-service`, `seat-inventory`, `purchase-composite`, `refund-composite`, `notification-service`, `payment-service`, and `ticket_atomic`.
 
+Event Service uses Node/Jest instead:
+```bash
+cd event-service
+npm install
+npm test -- --runInBand
+```
+
 ## Project Structure
 ```
 concert-ticketing-system/
@@ -235,6 +242,7 @@ concert-ticketing-system/
 - The API Gateway runs on port 8000
 - Each service has its own database
 - Purchase checkout writes orders to the external OutSystems OrderService and issues tickets through the local `ticket-atomic` service
-- The Stripe wrapper is now available as a standalone service, but it is not yet wired into the purchase or cancel composites
+- The purchase wrapper still generates or accepts `paymentChargeId` values directly; the Stripe wrapper is available but is not yet wired into purchase or cancel flows
 - RabbitMQ is used for async `event.updated` and `event.cancelled` fanout from the create/edit composite to the notification wrapper
 - Event edit notifications include refund-request guidance, and cancel notifications include Stripe refund guidance for ticket holders that are not currently `cancelled` or `refunded`
+- Local order-aligned demo data still depends on prefixed external OrderService IDs like `fan-001` and `con-001`

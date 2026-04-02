@@ -46,14 +46,22 @@ Service URLs:
 - Swagger UI: `http://localhost:5002/docs`
 - PostgreSQL: `localhost:5434`
 
+In the repo root stack, the same service is exposed on `http://localhost:5003`.
+
 ## Local development
 
 ```bash
 cd event-service
 npm install
-cp .env.example .env
 npm run db:migrate
 npm run dev
+```
+
+## Tests
+
+```bash
+cd event-service
+npm test -- --runInBand
 ```
 
 ## Notes
