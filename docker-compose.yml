@@ -172,6 +172,17 @@ services:
     networks:
       - ticketing-net
 
+  # ── PAYMENT WRAPPER ─────────────────────────────────────────
+  payment-service:
+    build: ./payment-service
+    ports:
+      - "5014:5000"
+    environment:
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
+    networks:
+      - ticketing-net
+
   # ── EDIT EVENT COMPOSITE ────────────────────────────────────
   edit-event-composite:
     build: ./create-edit-event-composite
@@ -183,7 +194,8 @@ services:
       - SEAT_INVENTORY_URL=http://seat-inventory:5000
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/%2F
       - NOTIFICATION_EXCHANGE=concert.events
-      - NOTIFICATION_ROUTING_KEY=event.updated
+      - EVENT_UPDATED_ROUTING_KEY=event.updated
+      - EVENT_CANCELLED_ROUTING_KEY=event.cancelled
     depends_on:
       - event-service
       - user-service
@@ -202,7 +214,7 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/%2F
       - NOTIFICATION_EXCHANGE=concert.events
       - NOTIFICATION_QUEUE=notification.event-updated
-      - NOTIFICATION_ROUTING_KEY=event.updated
+      - NOTIFICATION_ROUTING_KEYS=event.updated,event.cancelled
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
     depends_on:

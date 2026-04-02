@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from datetime import datetime, timezone
+import html
 import json
 import os
 import threading
@@ -76,21 +77,97 @@ def build_change_lines(changes):
     return lines
 
 
-def build_plain_text_body(payload, recipient_name):
+def get_notification_type(payload):
+    return str(payload.get("type") or "event.updated")
+
+
+def get_event_snapshot(payload):
     event_after = payload.get("eventAfter") or {}
-    title = event_after.get("title") or payload.get("eventId")
-    venue = format_venue_label(event_after.get("venue")) or "Venue TBC"
-    start_at = format_change_value("startAt", event_after.get("startAt"))
+    event_before = payload.get("eventBefore") or {}
+    return event_after or event_before
+
+
+def build_default_refund_info(notification_type):
+    if notification_type == "event.cancelled":
+        return {
+            "requestRequired": False,
+            "provider": "stripe",
+            "message": (
+                "Refunds for cancelled events are intended to go back to your original "
+                "payment method through Stripe once the refund flow is enabled."
+            ),
+        }
+
+    return {
+        "requestRequired": True,
+        "provider": "stripe",
+        "message": (
+            "If the updated event details no longer work for you, you can request a refund. "
+            "Approved refunds are intended to be returned through Stripe to your original "
+            "payment method once the refund flow is enabled."
+        ),
+    }
+
+
+def get_refund_info(payload):
+    notification_type = get_notification_type(payload)
+    refund_info = payload.get("refundInfo")
+    if isinstance(refund_info, dict):
+        default = build_default_refund_info(notification_type)
+        default.update({key: value for key, value in refund_info.items() if value is not None})
+        return default
+    return build_default_refund_info(notification_type)
+
+
+def build_subject(payload):
+    notification_type = get_notification_type(payload)
+    event_snapshot = get_event_snapshot(payload)
+    title = event_snapshot.get("title") or payload.get("eventId")
+    prefix = "Event cancelled" if notification_type == "event.cancelled" else "Event update"
+    return f"{prefix}: {title}"
+
+
+def build_plain_text_body(payload, recipient_name):
+    notification_type = get_notification_type(payload)
+    event_snapshot = get_event_snapshot(payload)
+    title = event_snapshot.get("title") or payload.get("eventId")
+    venue = format_venue_label(event_snapshot.get("venue")) or "Venue TBC"
+    start_at = format_change_value("startAt", event_snapshot.get("startAt"))
+    cancelled_at = format_change_value("cancelledAt", event_snapshot.get("cancelledAt"))
+    cancellation_reason = event_snapshot.get("cancellationReason") or "No reason provided"
+    refund_info = get_refund_info(payload)
     lines = build_change_lines(payload.get("changes") or [])
 
     body = [
         f"Hi {recipient_name or 'there'},",
         "",
-        f'The event "{title}" has been updated.',
-        f"Venue: {venue}",
-        f"Start: {start_at}",
-        "",
     ]
+
+    if notification_type == "event.cancelled":
+        body.extend(
+            [
+                f'The event "{title}" has been cancelled.',
+                f"Venue: {venue}",
+                f"Original start: {start_at}",
+                f"Cancelled at: {cancelled_at}",
+                f"Reason: {cancellation_reason}",
+                "",
+                f"Refund info: {refund_info['message']}",
+                "No separate purchase action is needed from this email.",
+                "",
+                "Concert Hub",
+            ]
+        )
+        return "\n".join(body)
+
+    body.extend(
+        [
+            f'The event "{title}" has been updated.',
+            f"Venue: {venue}",
+            f"Start: {start_at}",
+            "",
+        ]
+    )
 
     if lines:
         body.append("Changed details:")
@@ -105,6 +182,7 @@ def build_plain_text_body(payload, recipient_name):
     body.extend(
         [
             "Please review the updated event details before attending.",
+            f"Refund info: {refund_info['message']}",
             "",
             "Concert Hub",
         ]
@@ -113,33 +191,55 @@ def build_plain_text_body(payload, recipient_name):
 
 
 def build_html_body(payload, recipient_name):
-    event_after = payload.get("eventAfter") or {}
-    title = event_after.get("title") or payload.get("eventId")
-    venue = format_venue_label(event_after.get("venue")) or "Venue TBC"
-    start_at = format_change_value("startAt", event_after.get("startAt"))
+    notification_type = get_notification_type(payload)
+    event_snapshot = get_event_snapshot(payload)
+    title = event_snapshot.get("title") or payload.get("eventId")
+    venue = format_venue_label(event_snapshot.get("venue")) or "Venue TBC"
+    start_at = format_change_value("startAt", event_snapshot.get("startAt"))
+    cancelled_at = format_change_value("cancelledAt", event_snapshot.get("cancelledAt"))
+    cancellation_reason = event_snapshot.get("cancellationReason") or "No reason provided"
+    refund_info = get_refund_info(payload)
     lines = build_change_lines(payload.get("changes") or [])
 
     change_items = "".join(
         [
             "<li><strong>{label}</strong>: {before} &rarr; {after}</li>".format(
-                label=line["label"],
-                before=line["before"],
-                after=line["after"],
+                label=html.escape(line["label"]),
+                before=html.escape(line["before"]),
+                after=html.escape(line["after"]),
             )
             for line in lines
         ]
     )
 
+    if notification_type == "event.cancelled":
+        return f"""
+        <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
+          <p>Hi {html.escape(recipient_name or 'there')},</p>
+          <p>Your event <strong>{html.escape(str(title))}</strong> has been cancelled.</p>
+          <p>
+            <strong>Venue:</strong> {html.escape(venue)}<br>
+            <strong>Original start:</strong> {html.escape(start_at)}<br>
+            <strong>Cancelled at:</strong> {html.escape(cancelled_at)}<br>
+            <strong>Reason:</strong> {html.escape(str(cancellation_reason))}
+          </p>
+          <p><strong>Refund info:</strong> {html.escape(refund_info["message"])}</p>
+          <p>No separate purchase action is needed from this email.</p>
+          <p>Concert Hub</p>
+        </div>
+        """.strip()
+
     return f"""
     <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
-      <p>Hi {recipient_name or 'there'},</p>
-      <p>Your event <strong>{title}</strong> has been updated.</p>
+      <p>Hi {html.escape(recipient_name or 'there')},</p>
+      <p>Your event <strong>{html.escape(str(title))}</strong> has been updated.</p>
       <p>
-        <strong>Venue:</strong> {venue}<br>
-        <strong>Start:</strong> {start_at}
+        <strong>Venue:</strong> {html.escape(venue)}<br>
+        <strong>Start:</strong> {html.escape(start_at)}
       </p>
       {"<p><strong>Changed details:</strong></p><ul>" + change_items + "</ul>" if change_items else ""}
       <p>Please review the updated event details before attending.</p>
+      <p><strong>Refund info:</strong> {html.escape(refund_info["message"])}</p>
       <p>Concert Hub</p>
     </div>
     """.strip()
@@ -154,7 +254,7 @@ def create_app(test_config=None):
         RABBITMQ_URL=os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/%2F"),
         NOTIFICATION_EXCHANGE=os.environ.get("NOTIFICATION_EXCHANGE", "concert.events"),
         NOTIFICATION_QUEUE=os.environ.get("NOTIFICATION_QUEUE", "notification.event-updated"),
-        NOTIFICATION_ROUTING_KEY=os.environ.get("NOTIFICATION_ROUTING_KEY", "event.updated"),
+        NOTIFICATION_ROUTING_KEYS=[],
         SENDGRID_API_KEY=os.environ.get("SENDGRID_API_KEY", ""),
         SENDGRID_FROM_EMAIL=os.environ.get("SENDGRID_FROM_EMAIL", ""),
         REQUEST_TIMEOUT_SECONDS=int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "8")),
@@ -163,6 +263,16 @@ def create_app(test_config=None):
 
     if test_config:
         app.config.update(test_config)
+
+    if not app.config["NOTIFICATION_ROUTING_KEYS"]:
+        routing_keys_raw = os.environ.get("NOTIFICATION_ROUTING_KEYS")
+        if routing_keys_raw:
+            app.config["NOTIFICATION_ROUTING_KEYS"] = [
+                key.strip() for key in routing_keys_raw.split(",") if key.strip()
+            ]
+        else:
+            legacy_key = os.environ.get("NOTIFICATION_ROUTING_KEY", "event.updated")
+            app.config["NOTIFICATION_ROUTING_KEYS"] = [legacy_key, "event.cancelled"]
 
     consumer_state = {
         "startedAt": utc_now(),
@@ -226,7 +336,7 @@ def create_app(test_config=None):
         return list(recipients.values())
 
     def send_email(recipient, payload):
-        subject = f'Event update: {payload.get("eventAfter", {}).get("title") or payload.get("eventId")}'
+        subject = build_subject(payload)
         plain_text = build_plain_text_body(payload, recipient.get("name"))
         html = build_html_body(payload, recipient.get("name"))
 
@@ -267,7 +377,7 @@ def create_app(test_config=None):
             )
         consumer_state["lastDeliveryMode"] = "sendgrid"
 
-    def process_event_update(payload):
+    def process_notification(payload):
         event_id = payload.get("eventId")
         if not event_id:
             raise RuntimeError("eventId is required in notification payload")
@@ -289,11 +399,12 @@ def create_app(test_config=None):
             durable=True,
         )
         channel.queue_declare(queue=app.config["NOTIFICATION_QUEUE"], durable=True)
-        channel.queue_bind(
-            exchange=app.config["NOTIFICATION_EXCHANGE"],
-            queue=app.config["NOTIFICATION_QUEUE"],
-            routing_key=app.config["NOTIFICATION_ROUTING_KEY"],
-        )
+        for routing_key in app.config["NOTIFICATION_ROUTING_KEYS"]:
+            channel.queue_bind(
+                exchange=app.config["NOTIFICATION_EXCHANGE"],
+                queue=app.config["NOTIFICATION_QUEUE"],
+                routing_key=routing_key,
+            )
 
     def consume_forever():
         params = pika.URLParameters(app.config["RABBITMQ_URL"])
@@ -310,7 +421,7 @@ def create_app(test_config=None):
                 def _on_message(ch, _method, _properties, body):
                     try:
                         payload = json.loads(body.decode("utf-8"))
-                        process_event_update(payload)
+                        process_notification(payload)
                         ch.basic_ack(delivery_tag=_method.delivery_tag)
                     except Exception as error:
                         consumer_state["lastError"] = str(error)
@@ -359,14 +470,27 @@ def create_app(test_config=None):
                 "dependencies": {
                     "userService": app.config["USER_SERVICE_URL"],
                     "rabbitmqUrl": app.config["RABBITMQ_URL"],
+                    "routingKeys": app.config["NOTIFICATION_ROUTING_KEYS"],
                 },
             }
         )
 
-    @app.route("/notifications/event-updated", methods=["POST"])
+    @app.route("/notifications/events", methods=["POST"])
     def dispatch_direct():
         payload = request.get_json() or {}
-        result = process_event_update(payload)
+        result = process_notification(payload)
+        return jsonify({"status": "processed", **result}), 200
+
+    @app.route("/notifications/event-updated", methods=["POST"])
+    def dispatch_updated_direct():
+        payload = request.get_json() or {}
+        result = process_notification(payload)
+        return jsonify({"status": "processed", **result}), 200
+
+    @app.route("/notifications/event-cancelled", methods=["POST"])
+    def dispatch_cancelled_direct():
+        payload = request.get_json() or {}
+        result = process_notification(payload)
         return jsonify({"status": "processed", **result}), 200
 
     if not app.config.get("TESTING") and app.config.get("START_CONSUMER", True):

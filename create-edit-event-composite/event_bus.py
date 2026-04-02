@@ -28,6 +28,8 @@ def _tracked_fields(event):
         "startAt": event.get("startAt"),
         "endAt": event.get("endAt"),
         "venue": _normalize_venue(event.get("venue")),
+        "cancelledAt": event.get("cancelledAt"),
+        "cancellationReason": event.get("cancellationReason"),
     }
 
 
@@ -50,6 +52,30 @@ def summarize_changes(before_event, after_event):
     return changes
 
 
+def build_refund_info(notification_type):
+    if notification_type == "event.cancelled":
+        return {
+            "requestRequired": False,
+            "provider": "stripe",
+            "status": "planned",
+            "message": (
+                "Refunds for cancelled events are intended to go back to the original "
+                "payment method through Stripe once the refund flow is enabled."
+            ),
+        }
+
+    return {
+        "requestRequired": True,
+        "provider": "stripe",
+        "status": "planned",
+        "message": (
+            "If the updated event details no longer work for you, you can request a refund. "
+            "Approved refunds are intended to be returned through Stripe to the original "
+            "payment method once the refund flow is enabled."
+        ),
+    }
+
+
 def build_event_updated_message(before_event, after_event, manager):
     changes = summarize_changes(before_event, after_event)
     return {
@@ -66,6 +92,27 @@ def build_event_updated_message(before_event, after_event, manager):
         "changes": changes,
         "eventBefore": _tracked_fields(before_event or {}),
         "eventAfter": _tracked_fields(after_event or {}),
+        "refundInfo": build_refund_info("event.updated"),
+    }
+
+
+def build_event_cancelled_message(before_event, after_event, manager):
+    changes = summarize_changes(before_event, after_event)
+    return {
+        "type": "event.cancelled",
+        "publishedAt": utc_now(),
+        "eventId": after_event.get("id"),
+        "managerId": after_event.get("managerId"),
+        "changedBy": after_event.get("changedBy"),
+        "manager": {
+            "id": manager.get("id"),
+            "name": manager.get("name"),
+            "email": manager.get("email"),
+        },
+        "changes": changes,
+        "eventBefore": _tracked_fields(before_event or {}),
+        "eventAfter": _tracked_fields(after_event or {}),
+        "refundInfo": build_refund_info("event.cancelled"),
     }
 
 
