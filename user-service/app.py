@@ -6,6 +6,12 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+DEMO_MANAGED_EVENTS = [
+    (2, "EVT1001", "The Midnight World Tour", "Marina Bay Sands, Singapore", "2026-08-15", 88.00, "active"),
+    (2, "EVT1002", "Neon Bloom Live", "Singapore Indoor Stadium", "2026-09-22", 98.00, "active"),
+    (2, "EVT1003", "Wave Artist Live", "Esplanade Theatre", "2026-10-10", 78.00, "active"),
+]
+
 
 # ── DATABASE CONNECTION ───────────────────────────────────────
 def get_db():
@@ -29,6 +35,36 @@ def parse_int(value, field_name):
         return int(value)
     except (TypeError, ValueError):
         raise ValueError(f"{field_name} must be an integer")
+
+
+def seed_demo_data(cursor, clear_tickets=True):
+    cursor.execute(
+        """
+        INSERT INTO users (id, name, email, role)
+        VALUES
+          (1, 'Alice Fan', 'fan@example.com', 'fan'),
+          (2, 'Maya Manager', 'manager@example.com', 'manager')
+        ON DUPLICATE KEY UPDATE
+          name = VALUES(name),
+          email = VALUES(email),
+          role = VALUES(role)
+        """
+    )
+
+    deleted_tickets = 0
+    if clear_tickets:
+        cursor.execute("DELETE FROM user_tickets WHERE userId IN (1, 2)")
+        deleted_tickets = cursor.rowcount
+
+    cursor.execute("DELETE FROM managed_events WHERE managerId = 2")
+    cursor.executemany(
+        """
+        INSERT INTO managed_events (managerId, eventId, name, venue, date, price, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        DEMO_MANAGED_EVENTS,
+    )
+    return deleted_tickets
 
 
 # ── HEALTH CHECK ──────────────────────────────────────────────
@@ -132,32 +168,31 @@ def seed_defaults():
     try:
         db = get_db()
         cursor = db.cursor()
-        cursor.execute(
-            """
-            INSERT INTO users (id, name, email, role)
-            VALUES
-              (1, 'Alice Fan', 'fan@example.com', 'fan'),
-              (2, 'Maya Manager', 'manager@example.com', 'manager')
-            ON DUPLICATE KEY UPDATE
-              name = VALUES(name),
-              role = VALUES(role)
-            """
-        )
-        cursor.execute(
-            "DELETE FROM managed_events WHERE managerId = 2 AND eventId IN ('EVT1001', 'EVT1002')"
-        )
-        cursor.execute(
-            """
-            INSERT INTO managed_events (managerId, eventId, name, venue, date, price, status)
-            VALUES
-              (2, 'EVT1001', 'The Midnight World Tour', 'Marina Bay Sands, Singapore', '2026-08-15', 88.00, 'active'),
-              (2, 'EVT1002', 'Neon Bloom Live', 'Singapore Indoor Stadium', '2026-09-22', 98.00, 'active')
-            """
-        )
+        deleted_tickets = seed_demo_data(cursor, clear_tickets=True)
         db.commit()
         cursor.close()
         db.close()
-        return jsonify({"status": "seeded"}), 200
+        return jsonify({"status": "seeded", "deletedUserTickets": deleted_tickets}), 200
+    except Exception as e:
+        if db:
+            db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if db:
+            db.close()
+
+
+@app.route("/user/reset-demo", methods=["POST"])
+def reset_demo_state():
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        deleted_tickets = seed_demo_data(cursor, clear_tickets=True)
+        db.commit()
+        cursor.close()
+        db.close()
+        return jsonify({"status": "demo reset complete", "deletedUserTickets": deleted_tickets}), 200
     except Exception as e:
         if db:
             db.rollback()

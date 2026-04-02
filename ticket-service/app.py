@@ -146,6 +146,19 @@ def invalidate_ticket(ticket_id):
     return jsonify(normalize(row_data)), 200
 
 
+@app.route("/tickets/reset-demo", methods=["POST"])
+def reset_demo_tickets():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM tickets")
+    before = cur.fetchone()[0]
+    cur.execute("DELETE FROM tickets")
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "demo tickets reset", "deleted": before}), 200
+
+
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=5000, debug=True)

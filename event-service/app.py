@@ -6,6 +6,12 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+DEMO_EVENTS = [
+    ("EVT1001", "The Midnight World Tour", "Marina Bay Sands, Singapore", "2026-08-15", 88.00, "electronic", "VIP", "active"),
+    ("EVT1002", "Neon Bloom Live", "Singapore Indoor Stadium", "2026-09-22", 98.00, "pop", "CAT1", "active"),
+    ("EVT1003", "Wave Artist Live", "Esplanade Theatre", "2026-10-10", 78.00, "hiphop", "CAT2", "active"),
+]
+
 
 def get_db():
     return mysql.connector.connect(
@@ -124,6 +130,41 @@ def cancel_event(eventId):
 
         return jsonify(updated), 200
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if db:
+            db.close()
+
+
+@app.route("/events/reset-demo", methods=["POST"])
+def reset_demo_events():
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO events (eventId, name, venue, date, price, genre, defaultSeatCategory, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+              name = VALUES(name),
+              venue = VALUES(venue),
+              date = VALUES(date),
+              price = VALUES(price),
+              genre = VALUES(genre),
+              defaultSeatCategory = VALUES(defaultSeatCategory),
+              status = VALUES(status),
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            DEMO_EVENTS,
+        )
+        db.commit()
+        cursor.close()
+        db.close()
+        return jsonify({"status": "demo events reset", "count": len(DEMO_EVENTS)}), 200
+    except Exception as e:
+        if db:
+            db.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         if db:

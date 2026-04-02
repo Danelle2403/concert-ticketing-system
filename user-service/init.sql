@@ -46,5 +46,6 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO managed_events (managerId, eventId, name, venue, date, price, status)
 VALUES
   (2, 'EVT1001', 'The Midnight World Tour', 'Marina Bay Sands, Singapore', '2026-08-15', 88.00, 'active'),
-  (2, 'EVT1002', 'Neon Bloom Live', 'Singapore Indoor Stadium', '2026-09-22', 98.00, 'active')
+  (2, 'EVT1002', 'Neon Bloom Live', 'Singapore Indoor Stadium', '2026-09-22', 98.00, 'active'),
+  (2, 'EVT1003', 'Wave Artist Live', 'Esplanade Theatre', '2026-10-10', 78.00, 'active')
 ;

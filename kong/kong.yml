@@ -31,6 +31,24 @@ services:
           - /tickets
         strip_path: false
 
+  - name: seat-inventory
+    url: http://seat-inventory:5000
+    routes:
+      - name: seat-inventory-routes
+        paths:
+          - /inventory
+        strip_path: false
+
+  - name: notification-service
+    url: http://notification-service:5000
+    routes:
+      - name: notification-routes
+        paths:
+          - /notifications
+        methods:
+          - GET
+        strip_path: false
+
   - name: purchase-composite
     url: http://purchase-composite:5000
     routes:
@@ -54,6 +72,7 @@ services:
         paths:
           - /events
         methods:
+          - OPTIONS
           - PUT
           - POST
         strip_path: false

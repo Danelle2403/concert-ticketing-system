@@ -1,87 +1,130 @@
-const API_BASE = "http://localhost:8000"; // API Gateway URL
+const API_BASE = window.API_BASE || "http://localhost:8000";
+
+async function requestJson(path, options = {}) {
+    const url = `${API_BASE}${path}`;
+    const opts = {
+        method: options.method || "GET",
+        headers: { ...(options.headers || {}) }
+    };
+
+    if (options.body !== undefined) {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(options.body);
+    }
+
+    const res = await fetch(url, opts);
+    const contentType = res.headers.get("content-type") || "";
+    let payload;
+
+    if (contentType.includes("application/json")) {
+        payload = await res.json();
+    } else {
+        const text = await res.text();
+        payload = text ? { raw: text } : {};
+    }
+
+    if (!res.ok) {
+        const message =
+            payload?.error ||
+            payload?.message ||
+            `Request failed with status ${res.status}`;
+        const error = new Error(message);
+        error.status = res.status;
+        error.payload = payload;
+        throw error;
+    }
+
+    return payload;
+}
 
 // ─── USER SERVICE ────────────────────────────────────────────
 async function loginUser(userId) {
-    const res = await fetch(`${API_BASE}/user/${userId}`);
-    return res.json();
+    return requestJson(`/user/${encodeURIComponent(userId)}`);
 }
 
 async function registerUser(data) {
-    const res = await fetch(`${API_BASE}/user/new`, {
+    return requestJson("/user/new", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data)
+        body: data
     });
-    return res.json();
 }
 
 async function getUserEvents(userId) {
-    const res = await fetch(`${API_BASE}/user/events?userId=${userId}`);
-    return res.json();
+    return requestJson(`/user/events?userId=${encodeURIComponent(userId)}`);
 }
 
 async function getManagingEvents(userId) {
-    const res = await fetch(`${API_BASE}/user/managing?userId=${userId}`);
-    return res.json();
+    return requestJson(`/user/managing?userId=${encodeURIComponent(userId)}`);
 }
 
 // ─── EVENT SERVICE ───────────────────────────────────────────
 async function getEvents() {
-    const res = await fetch(`${API_BASE}/events`);
-    return res.json();
+    return requestJson("/events");
 }
 
 async function getEventById(eventId) {
-    const res = await fetch(`${API_BASE}/events/${eventId}`);
-    return res.json();
+    return requestJson(`/events/${encodeURIComponent(eventId)}`);
+}
+
+// ─── SEAT INVENTORY SERVICE ──────────────────────────────────
+async function getInventoryByEvent(eventId) {
+    return requestJson(`/inventory/${encodeURIComponent(eventId)}`);
+}
+
+async function checkSeatAvailability(eventId, seatCategory, quantity = 1) {
+    return requestJson(
+        `/inventory/${encodeURIComponent(eventId)}/${encodeURIComponent(seatCategory)}?quantity=${encodeURIComponent(quantity)}`
+    );
+}
+
+// ─── TICKET SERVICE ──────────────────────────────────────────
+async function getTicketById(ticketId) {
+    return requestJson(`/tickets/${encodeURIComponent(ticketId)}`);
 }
 
 // ─── PURCHASE COMPOSITE ──────────────────────────────────────
 async function buyTicket(data) {
-    const res = await fetch(`${API_BASE}/purchase/checkout`, {
+    return requestJson("/purchase/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data)
+        body: data
     });
-    return res.json();
 }
 
 async function getPurchaseStatus(purchaseId) {
-    const res = await fetch(`${API_BASE}/purchase/${purchaseId}/status`);
-    return res.json();
+    return requestJson(`/purchase/${encodeURIComponent(purchaseId)}/status`);
 }
 
 // ─── REFUND COMPOSITE ────────────────────────────────────────
 async function requestRefundByTicket(ticketId) {
-    const res = await fetch(`${API_BASE}/refunds/${ticketId}`, {
+    return requestJson(`/refunds/${encodeURIComponent(ticketId)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        body: {}
     });
-    return res.json();
 }
 
 async function requestRefundByEvent(eventId) {
-    const res = await fetch(`${API_BASE}/refunds/event/${eventId}`, {
+    return requestJson(`/refunds/event/${encodeURIComponent(eventId)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        body: {}
     });
-    return res.json();
 }
 
 // ─── EDIT EVENT COMPOSITE ────────────────────────────────────
 async function updateEvent(eventId, data) {
-    const res = await fetch(`${API_BASE}/events/${eventId}/edit`, {
+    return requestJson(`/events/${encodeURIComponent(eventId)}/edit`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data)
+        body: data
     });
-    return res.json();
 }
 
 async function cancelEvent(eventId) {
-    const res = await fetch(`${API_BASE}/events/${eventId}/cancel`, {
+    return requestJson(`/events/${encodeURIComponent(eventId)}/cancel`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        body: {}
     });
-    return res.json();
+}
+
+// ─── NOTIFICATION SERVICE ────────────────────────────────────
+async function getNotificationLogs() {
+    return requestJson("/notifications");
 }

@@ -36,7 +36,10 @@ VALUES
   ('EVT1001', 'CAT2', 200, 200),
   ('EVT1002', 'VIP', 40, 40),
   ('EVT1002', 'CAT1', 150, 150),
-  ('EVT1002', 'CAT2', 250, 250)
+  ('EVT1002', 'CAT2', 250, 250),
+  ('EVT1003', 'VIP', 30, 30),
+  ('EVT1003', 'CAT1', 100, 100),
+  ('EVT1003', 'CAT2', 180, 180)
 ON DUPLICATE KEY UPDATE
   totalSeats = VALUES(totalSeats),
   availableSeats = VALUES(availableSeats),

@@ -77,6 +77,9 @@
                         <p>Enter your User ID to continue</p>
                     </div>
                     <div class="auth-divider"></div>
+                    <p class="auth-switch" style="text-align:left; margin-top:0;">
+                        Demo accounts: Fan <strong>ID 1</strong>, Manager <strong>ID 2</strong>
+                    </p>
                     <div class="form-group">
                         <label for="login-id">User ID</label>
                         <input type="text" id="login-id" placeholder="e.g. U001">
@@ -130,35 +133,43 @@
         </div>
     </main>
 
-    <script src="js/api.js"></script>
+    <script src="js/api.js?v=20260404"></script>
+    <script src="js/cursor.js?v=20260404"></script>
     <script>
 
+        const loginIdInput = document.getElementById("login-id");
+
         function switchTab(tab) {
-            // Show/hide panels
-            if (tab === 'login') {
-                document.getElementById("panel-login").style.display = "flex";
-                document.getElementById("panel-register").style.display = "none";
-            } else {
-                document.getElementById("panel-login").style.display = "none";
-                document.getElementById("panel-register").style.display = "flex";
-            }
-            // Update tab styles
+            const loginPanel = document.getElementById("panel-login");
+            const registerPanel = document.getElementById("panel-register");
+
+            loginPanel.classList.toggle("hidden", tab !== "login");
+            registerPanel.classList.toggle("hidden", tab !== "register");
+
             document.getElementById("tab-login").classList.toggle("active", tab === "login");
             document.getElementById("tab-register").classList.toggle("active", tab === "register");
         }
 
         async function handleLogin() {
             const userId = document.getElementById("login-id").value.trim();
-            if (!userId) return;
+            if (!userId) {
+                document.getElementById("login-error").textContent = "Please enter a User ID.";
+                document.getElementById("login-error").classList.remove("hidden");
+                return;
+            }
+
+            document.getElementById("login-error").classList.add("hidden");
             try {
                 const data = await loginUser(userId);
                 if (data && data.userId) {
                     sessionStorage.setItem("user", JSON.stringify(data));
                     window.location.href = data.role === "manager" ? "manage-event.html" : "index.html";
                 } else {
+                    document.getElementById("login-error").textContent = "User not found. Please check your ID or register.";
                     document.getElementById("login-error").classList.remove("hidden");
                 }
             } catch (err) {
+                document.getElementById("login-error").textContent = err.message || "Login failed. Please try again.";
                 document.getElementById("login-error").classList.remove("hidden");
             }
         }
@@ -167,21 +178,41 @@
             const name = document.getElementById("reg-name").value.trim();
             const email = document.getElementById("reg-email").value.trim();
             const role = document.getElementById("reg-role").value;
-            if (!name || !email) return;
+            const registerError = document.getElementById("register-error");
+            registerError.classList.add("hidden");
+            document.getElementById("register-success").classList.add("hidden");
+
+            if (!name || !email) {
+                registerError.textContent = "Name and email are required.";
+                registerError.classList.remove("hidden");
+                return;
+            }
             try {
                 const data = await registerUser({ name, email, role });
                 if (data && data.userId) {
                     sessionStorage.setItem("user", JSON.stringify(data));
                     document.getElementById("register-success").classList.remove("hidden");
-                    setTimeout(() => { window.location.href = "index.html"; }, 1500);
+                    setTimeout(() => {
+                        window.location.href = data.role === "manager" ? "manage-event.html" : "index.html";
+                    }, 1200);
                 } else {
-                    document.getElementById("register-error").classList.remove("hidden");
+                    registerError.textContent = "Registration failed. Please try again.";
+                    registerError.classList.remove("hidden");
                 }
             } catch (err) {
-                document.getElementById("register-error").classList.remove("hidden");
+                registerError.textContent = err.message || "Registration failed. Please try again.";
+                registerError.classList.remove("hidden");
             }
         }
 
+        loginIdInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                handleLogin();
+            }
+        });
+
+        switchTab("login");
     </script>
 
 </body>

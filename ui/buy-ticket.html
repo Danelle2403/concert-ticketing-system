@@ -14,7 +14,12 @@
         <div class="nav-links">
             <a href="index.html">Browse Events</a>
             <a href="request-refund.html">My Tickets</a>
+            <a href="#" onclick="openNotificationsOverlay(event)">Notifications</a>
             <span id="nav-user"></span>
+        </div>
+        <div class="nav-actions">
+            <a href="login.html" id="nav-login" class="btn-nav">Login</a>
+            <a href="#" id="nav-logout" class="hidden btn-nav-outline" onclick="logout(event)">Logout</a>
         </div>
     </nav>
 
@@ -48,6 +53,12 @@
             </div>
 
             <div class="form-group">
+                <label for="seat-category">Seat Category</label>
+                <select id="seat-category"></select>
+                <p id="seat-availability" class="form-subtitle">Checking live seat availability...</p>
+            </div>
+
+            <div class="form-group">
                 <label>Total Price</label>
                 <p id="total-price" class="total-price">$0.00</p>
             </div>
@@ -63,7 +74,7 @@
                 Processing your payment...
             </div>
 
-            <button class="btn-primary full-width" onclick="handlePurchase()">
+            <button id="purchase-btn" class="btn-primary full-width" onclick="handlePurchase()">
                 Confirm & Pay
             </button>
             <button class="btn-secondary full-width" onclick="window.location.href='index.html'">
@@ -73,15 +84,26 @@
 
     </main>
 
-    <script src="js/api.js"></script>
+    <script src="js/api.js?v=20260404"></script>
+    <script src="js/notifications-overlay.js?v=20260404"></script>
+    <script src="js/cursor.js?v=20260404"></script>
     <script>
+
+        const qtyInput = document.getElementById("ticket-qty");
+        const seatSelect = document.getElementById("seat-category");
+        const seatAvailability = document.getElementById("seat-availability");
+        const purchaseBtn = document.getElementById("purchase-btn");
 
         // Load logged in user
         const user = JSON.parse(sessionStorage.getItem("user"));
         if (user) {
             document.getElementById("nav-user").textContent = `👤 ${user.name}`;
+            document.getElementById("nav-login").classList.add("hidden");
+            document.getElementById("nav-logout").classList.remove("hidden");
             document.getElementById("buyer-name").value = user.name || "";
             document.getElementById("buyer-email").value = user.email || "";
+        } else {
+            document.getElementById("nav-user").textContent = "";
         }
 
         // Load selected event from sessionStorage
@@ -91,19 +113,132 @@
             document.getElementById("event-venue").textContent = `📍 ${event.venue}`;
             document.getElementById("event-date").textContent = `📅 ${event.date}`;
             document.getElementById("event-price").textContent = `From $${event.price} per ticket`;
-            updateTotal();
+            if (event.status === "cancelled") {
+                document.getElementById("purchase-error").textContent = "This event is cancelled. Ticket purchases are closed.";
+                document.getElementById("purchase-error").classList.remove("hidden");
+                seatAvailability.textContent = "Event cancelled.";
+                purchaseBtn.disabled = true;
+            } else if (user && user.role === "manager") {
+                document.getElementById("purchase-error").textContent = "Manager accounts cannot buy tickets. Use Manage Events instead.";
+                document.getElementById("purchase-error").classList.remove("hidden");
+                seatAvailability.textContent = "Managers can only manage events.";
+                purchaseBtn.disabled = true;
+            } else {
+                startCheckoutForEvent();
+            }
         } else {
-            // No event selected, send back to homepage
-            window.location.href = "index.html";
+            document.getElementById("event-name").textContent = "No event selected";
+            document.getElementById("event-venue").textContent = "Choose an event from Browse Events first.";
+            document.getElementById("event-date").innerHTML = `<a href="index.html">Go back to Browse Events</a>`;
+            document.getElementById("event-price").textContent = "";
+            document.getElementById("purchase-error").textContent = "Please select an event before checkout.";
+            document.getElementById("purchase-error").classList.remove("hidden");
+            purchaseBtn.disabled = true;
+        }
+
+        async function startCheckoutForEvent() {
+            try {
+                const latest = await getEventById(event.eventId);
+                if (latest && latest.status === "cancelled") {
+                    event.status = "cancelled";
+                    document.getElementById("purchase-error").textContent = "This event has been cancelled. Ticket purchases are closed.";
+                    document.getElementById("purchase-error").classList.remove("hidden");
+                    seatAvailability.textContent = "Event cancelled.";
+                    purchaseBtn.disabled = true;
+                    return;
+                }
+            } catch (err) {
+                // If status check fails, continue and rely on server-side final validation.
+            }
+
+            updateTotal();
+            loadSeatCategories();
         }
 
         // Update total price when quantity changes
-        document.getElementById("ticket-qty").addEventListener("input", updateTotal);
+        qtyInput.addEventListener("input", async () => {
+            updateTotal();
+            await refreshSeatAvailability();
+        });
+        seatSelect.addEventListener("change", refreshSeatAvailability);
 
         function updateTotal() {
+            if (!event) {
+                document.getElementById("total-price").textContent = "$0.00";
+                return;
+            }
             const qty = parseInt(document.getElementById("ticket-qty").value) || 1;
             const price = parseFloat(event.price) || 0;
             document.getElementById("total-price").textContent = `$${(qty * price).toFixed(2)}`;
+        }
+
+        async function loadSeatCategories() {
+            try {
+                const data = await getInventoryByEvent(event.eventId);
+                const inventory = data.inventory || [];
+                seatSelect.innerHTML = "";
+
+                if (!inventory.length) {
+                    seatSelect.innerHTML = `<option value="">No seat categories available</option>`;
+                    seatAvailability.textContent = "No live seat inventory found for this event.";
+                    purchaseBtn.disabled = true;
+                    return;
+                }
+
+                inventory.forEach(item => {
+                    const opt = document.createElement("option");
+                    opt.value = item.seatCategory;
+                    opt.textContent = `${item.seatCategory} (${item.availableSeats} left)`;
+                    seatSelect.appendChild(opt);
+                });
+
+                const preferred = event.defaultSeatCategory || inventory[0].seatCategory;
+                seatSelect.value = preferred;
+                await refreshSeatAvailability();
+            } catch (err) {
+                seatAvailability.textContent = err.message || "Unable to load seat availability.";
+                purchaseBtn.disabled = true;
+            }
+        }
+
+        async function refreshSeatAvailability() {
+            if (!event) {
+                seatAvailability.textContent = "No event selected.";
+                purchaseBtn.disabled = true;
+                return;
+            }
+            const seatCategory = seatSelect.value;
+            const qty = parseInt(qtyInput.value, 10) || 1;
+
+            if (!seatCategory) {
+                seatAvailability.textContent = "Select a seat category.";
+                purchaseBtn.disabled = true;
+                return;
+            }
+
+            try {
+                const data = await checkSeatAvailability(event.eventId, seatCategory, qty);
+                if (typeof data.isAvailable === "boolean") {
+                    if (data.isAvailable) {
+                        seatAvailability.textContent =
+                            `Available: ${data.availableSeats} seats left in ${seatCategory}.`;
+                        purchaseBtn.disabled = false;
+                    } else {
+                        seatAvailability.textContent =
+                            `Not enough seats in ${seatCategory}. Only ${data.availableSeats} left.`;
+                        purchaseBtn.disabled = true;
+                    }
+                } else if (data.error) {
+                    seatAvailability.textContent = data.error;
+                    purchaseBtn.disabled = true;
+                } else {
+                    seatAvailability.textContent = "Unable to verify availability right now.";
+                    purchaseBtn.disabled = true;
+                }
+            } catch (err) {
+                seatAvailability.textContent = err.message || "Unable to verify seat availability.";
+                purchaseBtn.disabled = true;
+            }
         }
 
         // PURCHASE — calls POST /purchase/checkout
@@ -119,6 +254,16 @@
                 window.location.href = "login.html";
                 return;
             }
+            if (user.role === "manager") {
+                document.getElementById("purchase-error").textContent = "Manager accounts cannot buy tickets.";
+                document.getElementById("purchase-error").classList.remove("hidden");
+                return;
+            }
+            if (!event || event.status === "cancelled") {
+                document.getElementById("purchase-error").textContent = "This event is cancelled.";
+                document.getElementById("purchase-error").classList.remove("hidden");
+                return;
+            }
 
             document.getElementById("purchase-loading").classList.remove("hidden");
             document.getElementById("purchase-error").classList.add("hidden");
@@ -128,6 +273,7 @@
                     userId: user.userId,
                     eventId: event.eventId,
                     quantity: qty,
+                    seatCategory: seatSelect.value,
                     name,
                     email
                 });
@@ -142,13 +288,23 @@
                         window.location.href = "request-refund.html";
                     }, 2000);
                 } else {
+                    document.getElementById("purchase-error").textContent = "Purchase failed. Please try again.";
                     document.getElementById("purchase-error").classList.remove("hidden");
                 }
 
             } catch (err) {
                 document.getElementById("purchase-loading").classList.add("hidden");
+                document.getElementById("purchase-error").textContent = err.message || "Purchase failed. Please try again.";
                 document.getElementById("purchase-error").classList.remove("hidden");
             }
+        }
+
+        function logout(e) {
+            e.preventDefault();
+            sessionStorage.removeItem("user");
+            sessionStorage.removeItem("selectedEvent");
+            sessionStorage.removeItem("lastPurchase");
+            window.location.href = "login.html";
         }
 
     </script>

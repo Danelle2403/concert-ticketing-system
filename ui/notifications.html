@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concert Ticketing | Notifications</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="nav-brand">🎵 ConcertHub</div>
+        <div class="nav-links">
+            <a href="index.html">Browse Events</a>
+            <a href="request-refund.html">My Tickets</a>
+            <a href="notifications.html" class="active">Notifications</a>
+            <span id="nav-user"></span>
+        </div>
+        <div class="nav-actions">
+            <a href="login.html" id="nav-login" class="btn-nav">Login</a>
+            <a href="#" id="nav-logout" class="hidden btn-nav-outline" onclick="logout(event)">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <h2>Notifications</h2>
+
+        <div id="not-logged-in" class="hidden">
+            <p>Please <a href="login.html">login</a> to view your notifications.</p>
+        </div>
+
+        <div id="loading" class="loading-msg">Loading your notifications...</div>
+
+        <div class="ticket-actions" style="margin-bottom: 16px;">
+            <button class="btn-secondary" onclick="loadNotifications()">Refresh</button>
+        </div>
+
+        <div id="notification-list"></div>
+
+        <div id="no-notifications" class="hidden">
+            <p>No notifications yet.</p>
+        </div>
+
+        <div id="error-msg" class="error-msg hidden">
+            Failed to load notifications. Please try again later.
+        </div>
+    </main>
+
+    <script src="js/api.js?v=20260404"></script>
+    <script src="js/cursor.js?v=20260404"></script>
+    <script>
+        const user = JSON.parse(sessionStorage.getItem("user"));
+
+        if (!user) {
+            document.getElementById("loading").classList.add("hidden");
+            document.getElementById("not-logged-in").classList.remove("hidden");
+        } else {
+            document.getElementById("nav-user").textContent = `👤 ${user.name}`;
+            document.getElementById("nav-login").classList.add("hidden");
+            document.getElementById("nav-logout").classList.remove("hidden");
+            loadNotifications();
+        }
+
+        function formatTime(ts) {
+            if (!ts) return "Unknown time";
+            const d = new Date(ts);
+            if (Number.isNaN(d.getTime())) return ts;
+            return d.toLocaleString();
+        }
+
+        function parsePayload(raw) {
+            if (!raw) return {};
+            try {
+                return JSON.parse(raw);
+            } catch (e) {
+                return { raw };
+            }
+        }
+
+        function extractTitle(item, payload) {
+            if (item.subject) return item.subject;
+            const map = {
+                "ticket.purchased": "Ticket Purchased",
+                "concert.updated": "Concert Updated",
+                "concert.cancelled": "Concert Cancelled",
+                "refund.confirmed": "Refund Confirmed",
+                "concert.refund.failed": "Refund Failed",
+            };
+            return map[item.routing_key] || "Notification";
+        }
+
+        function extractBody(item, payload) {
+            if (payload.eventName && payload.ticketId) {
+                return `${payload.eventName} • Ticket ${payload.ticketId}`;
+            }
+            if (payload.eventName) {
+                return payload.eventName;
+            }
+            if (payload.reason) {
+                return payload.reason;
+            }
+            return item.routing_key || "Notification";
+        }
+
+        async function loadNotifications() {
+            document.getElementById("loading").classList.remove("hidden");
+            document.getElementById("error-msg").classList.add("hidden");
+            document.getElementById("no-notifications").classList.add("hidden");
+
+            const list = document.getElementById("notification-list");
+            list.innerHTML = "";
+
+            try {
+                const data = await getNotificationLogs();
+                document.getElementById("loading").classList.add("hidden");
+
+                let notifications = data.notifications || [];
+
+                // Fan sees own email notifications; manager sees everything.
+                if (user.role !== "manager") {
+                    const email = (user.email || "").toLowerCase();
+                    notifications = notifications.filter(n => {
+                        const payload = parsePayload(n.payload);
+                        const payloadUserId = payload.userId != null ? String(payload.userId) : null;
+                        const viewerUserId = user.userId != null ? String(user.userId) : null;
+                        const emailMatches = (n.email || "").toLowerCase() === email;
+                        const userIdMatches = payloadUserId && viewerUserId && payloadUserId === viewerUserId;
+                        return emailMatches || userIdMatches;
+                    });
+                }
+
+                if (!notifications.length) {
+                    document.getElementById("no-notifications").classList.remove("hidden");
+                    return;
+                }
+
+                notifications.forEach(item => {
+                    const payload = parsePayload(item.payload);
+                    const card = document.createElement("div");
+                    card.className = "ticket-card";
+                    card.innerHTML = `
+                        <div class="ticket-info">
+                            <h3>${extractTitle(item, payload)}</h3>
+                            <p>${extractBody(item, payload)}</p>
+                            <p>Type: ${item.routing_key || "-"}</p>
+                            <p>Sent: ${formatTime(item.sent_at)}</p>
+                            <span class="ticket-status status-active">${item.email || "broadcast"}</span>
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+            } catch (err) {
+                document.getElementById("loading").classList.add("hidden");
+                document.getElementById("error-msg").textContent = err.message || "Failed to load notifications. Please try again later.";
+                document.getElementById("error-msg").classList.remove("hidden");
+            }
+        }
+
+        function logout(e) {
+            e.preventDefault();
+            sessionStorage.removeItem("user");
+            sessionStorage.removeItem("selectedEvent");
+            sessionStorage.removeItem("lastPurchase");
+            window.location.href = "login.html";
+        }
+    </script>
+
+</body>
+</html>

@@ -14,7 +14,12 @@
         <div class="nav-links">
             <a href="index.html">Browse Events</a>
             <a href="manage-event.html" class="active">Manage Events</a>
+            <a href="#" onclick="openNotificationsOverlay(event)">Notifications</a>
             <span id="nav-user"></span>
+        </div>
+        <div class="nav-actions">
+            <a href="login.html" id="nav-login" class="btn-nav">Login</a>
+            <a href="#" id="nav-logout" class="hidden btn-nav-outline" onclick="logout(event)">Logout</a>
         </div>
     </nav>
 
@@ -97,7 +102,9 @@
         </div>
     </div>
 
-    <script src="js/api.js"></script>
+    <script src="js/api.js?v=20260404"></script>
+    <script src="js/notifications-overlay.js?v=20260404"></script>
+    <script src="js/cursor.js?v=20260404"></script>
     <script>
 
         const user = JSON.parse(sessionStorage.getItem("user"));
@@ -108,6 +115,8 @@
             document.getElementById("access-denied").classList.remove("hidden");
         } else {
             document.getElementById("nav-user").textContent = `👤 ${user.name}`;
+            document.getElementById("nav-login").classList.add("hidden");
+            document.getElementById("nav-logout").classList.remove("hidden");
             document.getElementById("manager-view").classList.remove("hidden");
             loadManagedEvents();
         }
@@ -124,6 +133,7 @@
                 }
 
                 const list = document.getElementById("events-list");
+                list.innerHTML = "";
                 data.events.forEach(event => {
                     const card = document.createElement("div");
                     card.className = "event-manage-card";
@@ -133,6 +143,9 @@
                             <p>📍 ${event.venue}</p>
                             <p>📅 ${event.date}</p>
                             <p>💰 $${event.price}</p>
+                            <p class="seat-summary" id="seat-summary-${event.eventId}">
+                                Seats left: loading...
+                            </p>
                             <span class="ticket-status status-${event.status}">
                                 ${event.status}
                             </span>
@@ -155,11 +168,32 @@
                         </div>
                     `;
                     list.appendChild(card);
+                    loadSeatSummary(event.eventId);
                 });
 
             } catch (err) {
                 document.getElementById("loading").classList.add("hidden");
+                document.getElementById("error-msg").textContent = err.message || "Failed to load events. Please try again.";
                 document.getElementById("error-msg").classList.remove("hidden");
+            }
+        }
+
+        async function loadSeatSummary(eventId) {
+            const el = document.getElementById(`seat-summary-${eventId}`);
+            if (!el) return;
+            try {
+                const data = await getInventoryByEvent(eventId);
+                const inventory = data.inventory || [];
+                if (!inventory.length) {
+                    el.textContent = "Seats left: unavailable";
+                    return;
+                }
+                const parts = inventory.map(
+                    item => `${item.seatCategory}: ${item.availableSeats}/${item.totalSeats}`
+                );
+                el.textContent = `Seats left: ${parts.join(" • ")}`;
+            } catch (err) {
+                el.textContent = "Seats left: unavailable";
             }
         }
 
@@ -204,11 +238,13 @@
                         location.reload();
                     }, 2000);
                 } else {
+                    document.getElementById("edit-error").textContent = "Update failed. Please try again.";
                     document.getElementById("edit-error").classList.remove("hidden");
                 }
 
             } catch (err) {
                 document.getElementById("edit-loading").classList.add("hidden");
+                document.getElementById("edit-error").textContent = err.message || "Update failed. Please try again.";
                 document.getElementById("edit-error").classList.remove("hidden");
             }
         }
@@ -242,21 +278,44 @@
                 document.getElementById("cancel-loading").classList.add("hidden");
 
                 if (data && data.eventId) {
+                    const queued = data.refunds?.queued ?? 0;
+                    const remaining = data.refundProgress?.remainingActive ?? 0;
+                    const completed = data.refundProgress?.completed !== false;
+                    const summary = completed
+                        ? `✅ Event cancelled. ${queued} refund(s) processed.`
+                        : `✅ Event cancelled. ${queued} refund(s) queued; ${remaining} still processing.`;
+                    document.getElementById("cancel-success").textContent = summary;
                     document.getElementById("cancel-success").classList.remove("hidden");
+
+                    if (data.warning) {
+                        document.getElementById("cancel-error").textContent = data.warning;
+                        document.getElementById("cancel-error").classList.remove("hidden");
+                    }
+
                     setTimeout(() => {
                         closeCancelModal();
                         location.reload();
-                    }, 2000);
+                    }, 2500);
                 } else {
+                    document.getElementById("cancel-error").textContent = "Cancellation failed. Please try again.";
                     document.getElementById("cancel-error").classList.remove("hidden");
                     document.getElementById("confirm-cancel-btn").disabled = false;
                 }
 
             } catch (err) {
                 document.getElementById("cancel-loading").classList.add("hidden");
+                document.getElementById("cancel-error").textContent = err.message || "Cancellation failed. Please try again.";
                 document.getElementById("cancel-error").classList.remove("hidden");
                 document.getElementById("confirm-cancel-btn").disabled = false;
             }
+        }
+
+        function logout(e) {
+            e.preventDefault();
+            sessionStorage.removeItem("user");
+            sessionStorage.removeItem("selectedEvent");
+            sessionStorage.removeItem("lastPurchase");
+            window.location.href = "login.html";
         }
 
     </script>

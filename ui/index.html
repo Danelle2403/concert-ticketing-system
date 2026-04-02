@@ -47,11 +47,13 @@
             <a href="index.html#genres">Genres</a>
             <a href="index.html#artists">Artists</a>
             <a href="index.html#upcoming">Upcoming</a>
+            <a href="#" onclick="openNotificationsOverlay(event)">Notifications</a>
             <a href="#" onclick="goToTickets(event)">My Tickets</a>
         </div>
         <div class="nav-actions">
             <a href="login.html" id="nav-login" class="btn-nav">Login</a>
             <span id="nav-user" class="hidden nav-user-label"></span>
+            <a href="#" id="nav-logout" class="hidden btn-nav-outline" onclick="logout(event)">Logout</a>
         </div>
     </nav>
 
@@ -309,6 +311,7 @@
                     <a href="#">Artists</a>
                     <a href="#">Venues</a>
                     <a href="#">Genres</a>
+                    <a href="#" onclick="openNotificationsOverlay(event)">Notifications</a>
                 </div>
                 <div class="footer-col">
                     <h4>Account</h4>
@@ -339,6 +342,7 @@
             </div>
             <h3 class="event-card-name"></h3>
             <p class="event-card-venue"></p>
+            <span class="event-card-status hidden"></span>
             <div class="event-card-footer">
                 <span class="event-card-price"></span>
                 <button class="btn-card">Buy Tickets</button>
@@ -346,41 +350,10 @@
         </div>
     </template>
 
-    <script src="js/api.js"></script>
+    <script src="js/api.js?v=20260404"></script>
+    <script src="js/notifications-overlay.js?v=20260404"></script>
+    <script src="js/cursor.js?v=20260404"></script>
     <script>
-
-        // ── CUSTOM CURSOR ─────────────────────────────────────
-        const cursor = document.getElementById("cursor");
-        const follower = document.getElementById("cursor-follower");
-        let mouseX = 0, mouseY = 0, followerX = 0, followerY = 0;
-
-        document.addEventListener("mousemove", e => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-            cursor.style.left = mouseX + "px";
-            cursor.style.top = mouseY + "px";
-        });
-
-        function animateFollower() {
-            followerX += (mouseX - followerX) * 0.1;
-            followerY += (mouseY - followerY) * 0.1;
-            follower.style.left = followerX + "px";
-            follower.style.top = followerY + "px";
-            requestAnimationFrame(animateFollower);
-        }
-        animateFollower();
-
-        document.querySelectorAll("a, button").forEach(el => {
-            el.addEventListener("mouseenter", () => {
-                cursor.classList.add("cursor-hover");
-                follower.classList.add("cursor-hover");
-            });
-            el.addEventListener("mouseleave", () => {
-                cursor.classList.remove("cursor-hover");
-                follower.classList.remove("cursor-hover");
-            });
-        });
-
         // ── NAVBAR SHRINK ON SCROLL ───────────────────────────
         window.addEventListener("scroll", () => {
             const navbar = document.getElementById("navbar");
@@ -450,12 +423,32 @@
         if (user) {
             document.getElementById("nav-login").classList.add("hidden");
             document.getElementById("nav-user").classList.remove("hidden");
-            document.getElementById("nav-user").textContent = user.name;
+            document.getElementById("nav-user").textContent = `${user.name} (${user.role})`;
+            document.getElementById("nav-logout").classList.remove("hidden");
+
+            if (user.role === "manager") {
+                const managerLink = document.createElement("a");
+                managerLink.href = "manage-event.html";
+                managerLink.textContent = "Manage Events";
+                document.querySelector(".nav-links").appendChild(managerLink);
+            }
         }
 
         function goToTickets(e) {
             e.preventDefault();
+            if (user && user.role === "manager") {
+                window.location.href = "manage-event.html";
+                return;
+            }
             window.location.href = user ? "request-refund.html" : "login.html";
+        }
+
+        function logout(e) {
+            e.preventDefault();
+            sessionStorage.removeItem("user");
+            sessionStorage.removeItem("selectedEvent");
+            sessionStorage.removeItem("lastPurchase");
+            window.location.href = "login.html";
         }
 
         function scrollToEvents() {
@@ -495,15 +488,42 @@
                 const template = document.getElementById("event-card-template");
                 events.forEach(event => {
                     const card = template.content.cloneNode(true);
+                    const isCancelled = event.status === "cancelled";
+                    const isManager = !!(user && user.role === "manager");
+                    const isBuyBlocked = isCancelled || isManager;
+
                     card.querySelector(".event-card-date").textContent = event.date || "TBC";
-                    card.querySelector(".event-card-genre").textContent = event.genre || "Live";
+                    const genreEl = card.querySelector(".event-card-genre");
+                    genreEl.textContent = isCancelled ? "Cancelled" : (event.genre || "Live");
                     card.querySelector(".event-card-name").textContent = event.name;
                     card.querySelector(".event-card-venue").textContent = event.venue;
                     card.querySelector(".event-card-price").textContent = `From $${event.price}`;
-                    card.querySelector(".btn-card").addEventListener("click", () => {
-                        sessionStorage.setItem("selectedEvent", JSON.stringify(event));
-                        window.location.href = "buy-ticket.html";
-                    });
+
+                    const statusEl = card.querySelector(".event-card-status");
+                    if (isCancelled) {
+                        statusEl.classList.remove("hidden");
+                        statusEl.classList.add("ticket-status", "status-cancelled");
+                        statusEl.textContent = "CANCELLED";
+                    }
+
+                    const rootCard = card.querySelector(".event-card");
+                    const buyBtn = card.querySelector(".btn-card");
+                    if (isBuyBlocked) {
+                        if (isCancelled) {
+                            rootCard.classList.add("event-card-cancelled");
+                        }
+                        buyBtn.disabled = true;
+                        buyBtn.textContent = isCancelled ? "Cancelled" : "Manage Only";
+                    } else {
+                        buyBtn.addEventListener("click", () => {
+                            sessionStorage.setItem("selectedEvent", JSON.stringify(event));
+                            window.location.href = "buy-ticket.html";
+                        });
+                    }
+
+                    if (isManager && !isCancelled) {
+                        genreEl.classList.add("event-card-genre-manager");
+                    }
                     grid.appendChild(card);
                 });
                 document.querySelectorAll(".animate-on-scroll:not(.in-view)").forEach(el => observer.observe(el));

@@ -12,6 +12,17 @@ CORS(app)
 
 DEFAULT_HOLD_TTL_SECONDS = int(os.environ.get("DEFAULT_HOLD_TTL_SECONDS", "300"))
 MAX_HOLD_TTL_SECONDS = int(os.environ.get("MAX_HOLD_TTL_SECONDS", "1800"))
+DEMO_INVENTORY_ROWS = [
+    ("EVT1001", "VIP", 50, 50),
+    ("EVT1001", "CAT1", 120, 120),
+    ("EVT1001", "CAT2", 200, 200),
+    ("EVT1002", "VIP", 40, 40),
+    ("EVT1002", "CAT1", 150, 150),
+    ("EVT1002", "CAT2", 250, 250),
+    ("EVT1003", "VIP", 30, 30),
+    ("EVT1003", "CAT1", 100, 100),
+    ("EVT1003", "CAT2", 180, 180),
+]
 
 
 def get_db():
@@ -485,6 +496,36 @@ def get_hold(hold_id):
             return jsonify({"error": "Hold not found"}), 404
 
         return jsonify(hold), 200
+    except Exception as e:
+        if db:
+            db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if db:
+            db.close()
+
+
+@app.route("/inventory/reset-demo", methods=["POST"])
+def reset_demo_inventory():
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        db.start_transaction()
+
+        cursor.execute("DELETE FROM seat_holds")
+
+        cursor.execute("DELETE FROM seat_inventory WHERE eventId IN ('EVT1001', 'EVT1002', 'EVT1003')")
+        cursor.executemany(
+            """
+            INSERT INTO seat_inventory (eventId, seatCategory, totalSeats, availableSeats)
+            VALUES (%s, %s, %s, %s)
+            """,
+            DEMO_INVENTORY_ROWS,
+        )
+
+        db.commit()
+        return jsonify({"status": "demo inventory reset", "rows": len(DEMO_INVENTORY_ROWS)}), 200
     except Exception as e:
         if db:
             db.rollback()

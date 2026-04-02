@@ -137,6 +137,18 @@ def list_notifications():
     return jsonify({"notifications": rows}), 200
 
 
+@app.route("/notifications/reset-demo", methods=["POST"])
+def reset_demo_notifications():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM notification_logs")
+    before = cur.fetchone()[0]
+    cur.execute("DELETE FROM notification_logs")
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "demo notifications reset", "deleted": before}), 200
+
+
 if __name__ == "__main__":
     init_db()
     t = threading.Thread(target=consume_loop, daemon=True)

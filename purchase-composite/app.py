@@ -129,6 +129,8 @@ def checkout():
     code, user = req_json("GET", f"{USER_SERVICE_URL}/user/{user_id}")
     if code != 200:
         return jsonify({"error": "User not found"}), 404
+    if user.get("role") != "fan":
+        return jsonify({"error": "Only fan accounts can purchase tickets"}), 403
 
     # Validate event
     code, event = req_json("GET", f"{EVENT_SERVICE_URL}/events/{event_id}")
@@ -335,6 +337,30 @@ def ticket_update_status(ticketId):
     row = cur.fetchone()
     conn.close()
     return jsonify(dict(row)), 200
+
+
+@app.route("/purchase/reset-demo", methods=["POST"])
+def reset_demo_purchases():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM ticket_map")
+    ticket_map_count = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM purchases")
+    purchase_count = cur.fetchone()[0]
+    cur.execute("DELETE FROM ticket_map")
+    cur.execute("DELETE FROM purchases")
+    conn.commit()
+    conn.close()
+    return (
+        jsonify(
+            {
+                "status": "demo purchases reset",
+                "deletedPurchases": purchase_count,
+                "deletedTicketMapRows": ticket_map_count,
+            }
+        ),
+        200,
+    )
 
 
 if __name__ == "__main__":

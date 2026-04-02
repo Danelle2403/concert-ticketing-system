@@ -14,8 +14,8 @@ The system supports 3 main scenarios:
 | Microservices | Python, Flask |
 | API Gateway | Kong |
 | Messaging | RabbitMQ (AMQP) |
-| Database | MySQL (User Service), Supabase/PostgreSQL (Ticket Service) |
-| External Services | Stripe (Payments), SendGrid (Notifications), OutSystems (Order Service) |
+| Database | MySQL (User/Event/Seat Inventory), SQLite (Ticket/Purchase/Notification logs) |
+| External Services | Stripe/SendGrid/OutSystems interfaces are modeled via local wrapper services for demo |
 | Deployment | Docker, Docker Compose |
 | Version Control | GitHub |
 
@@ -41,13 +41,16 @@ docker-compose up --build
 | Service | URL |
 |---|---|
 | UI | http://localhost:8080/index.html |
+| Notifications Page (consumer inbox) | http://localhost:8080/notifications.html |
 | Kong API Gateway (used by UI) | http://localhost:8000 |
 | User Service | http://localhost:5001 |
 | Event Service | http://localhost:5003 |
 | Seat Inventory Service | http://localhost:5004 |
+| Ticket Service | http://localhost:5002 |
 | Purchase Composite | http://localhost:5010 |
 | Refund Composite | http://localhost:5011 |
 | Edit Event Composite | http://localhost:5012 |
+| Notification Service | http://localhost:5013 |
 | RabbitMQ Dashboard | http://localhost:15672 |
 
 ### 4. Seed demo users/events
@@ -59,12 +62,25 @@ Default demo users:
 - Fan login `User ID = 1`
 - Manager login `User ID = 2`
 
-### 5. Stop all services
+### 5. Reset demo state (recommended before every demo run)
+If your local data has drifted (too many old tickets, depleted seats, cancelled events), reset everything to a clean baseline:
+```bash
+./scripts/reset_demo_state.sh
+```
+This resets:
+- demo users and manager-managed events
+- fan tickets/history in `user-service`
+- event details/status in `event-service`
+- seat inventory + holds (including EVT1003 categories)
+- purchase and ticket tables
+- notification logs
+
+### 6. Stop all services
 ```bash
 docker-compose down
 ```
 
-### 6. Run Seat Inventory smoke tests
+### 7. Run Seat Inventory smoke tests
 ```bash
 python3 seat-inventory/smoke_test.py
 ```
@@ -78,6 +94,7 @@ concert-ticketing-system/
 │   ├── buy-ticket.html        # Purchase tickets
 │   ├── request-refund.html    # View tickets & request refund
 │   ├── manage-event.html      # Event manager dashboard
+│   ├── notifications.html     # Consumer notification inbox
 │   ├── css/style.css
 │   └── js/api.js
 ├── user-service/              # User atomic microservice
@@ -114,6 +131,7 @@ concert-ticketing-system/
 | GET | /user/tickets/by-event/<eventId> | Internal event ticket lookup |
 | PUT | /user/managed/<eventId> | Internal managed-event update |
 | POST | /user/managed/<eventId>/cancel | Internal managed-event cancel |
+| POST | /user/reset-demo | Reset demo users, managed events, and clear demo user tickets |
 
 ## API Endpoints — Event Service
 | Method | Endpoint | Description |
@@ -123,6 +141,7 @@ concert-ticketing-system/
 | GET | /events/<eventId> | Get event details |
 | PUT | /events/<eventId>/edit | Edit event details |
 | POST | /events/<eventId>/cancel | Cancel event |
+| POST | /events/reset-demo | Reset demo event records and set all to active |
 
 ## API Endpoints — Purchase Composite
 | Method | Endpoint | Description |
@@ -132,6 +151,17 @@ concert-ticketing-system/
 | GET | /purchase/<purchaseId>/status | Get purchase status |
 | GET | /purchase/ticket/<ticketId> | Internal ticket mapping lookup |
 | POST | /purchase/ticket/<ticketId>/status | Internal ticket mapping status update |
+| POST | /purchase/reset-demo | Clear purchase and ticket_map demo data |
+
+## API Endpoints — Ticket Service
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /health | Health check |
+| POST | /tickets/issue | Issue one ticket |
+| GET | /tickets/<ticketId> | Get one ticket |
+| GET | /tickets/event/<eventId> | Get all tickets for an event |
+| POST | /tickets/<ticketId>/invalidate | Invalidate/refund ticket |
+| POST | /tickets/reset-demo | Clear all issued tickets in local demo DB |
 
 ## API Endpoints — Refund Composite
 | Method | Endpoint | Description |
@@ -158,9 +188,17 @@ concert-ticketing-system/
 | POST | /inventory/confirm | Confirm a hold (`holdId`) |
 | POST | /inventory/release | Release a hold (`holdId`) and return seats (`allowConfirmedRelease=true` for refund/cancel) |
 | GET | /inventory/holds/<holdId> | Get hold status/details |
+| POST | /inventory/reset-demo | Reset seat inventory + clear holds for demo baseline |
+
+## API Endpoints — Notification Service
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /health | Health check |
+| GET | /notifications | List last 200 notification logs |
+| POST | /notifications/reset-demo | Clear notification logs for demo baseline |
 
 ## Notes & Assumptions
 - The API Gateway runs on port 8000
 - Each service has its own database
-- OutSystems is used for the Payment Service
+- Payment/notification external integrations are represented by local wrapper services for reliable demo runs
 - RabbitMQ handles all async messaging between services

@@ -64,6 +64,17 @@ def apply_refund_state(ticket_id, payment_refund_id=None, notify=True):
     if code != 200:
         return False, {"error": "Ticket not found", "ticketId": ticket_id}, 404
 
+    email = ticket.get("email")
+    name = ticket.get("name")
+    user_id = ticket.get("userId")
+
+    # user_tickets is intentionally minimal; hydrate email/name from user profile when absent.
+    if user_id is not None and (not email or not name):
+        user_code, user = req_json("GET", f"{USER_SERVICE_URL}/user/{user_id}")
+        if user_code == 200:
+            email = email or user.get("email")
+            name = name or user.get("name")
+
     if ticket.get("status") != "active":
         return True, {
             "ticketId": ticket_id,
@@ -109,8 +120,9 @@ def apply_refund_state(ticket_id, payment_refund_id=None, notify=True):
         "status": "refunded",
         "eventId": ticket.get("eventId"),
         "eventName": ticket.get("eventName"),
-        "email": ticket.get("email"),
-        "userId": ticket.get("userId"),
+        "email": email,
+        "name": name,
+        "userId": user_id,
     }
 
     if notify:

@@ -1,6 +1,3 @@
-Now replace your entire css/style.css with this:
-
-css
 /* ── IMPORTS & RESET ─────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 
@@ -40,7 +37,7 @@ body {
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
-    cursor: none;
+    cursor: auto;
 }
 
 a {
@@ -805,6 +802,27 @@ a:hover { color: var(--text-primary); }
     font-weight: 500;
 }
 
+.event-card-genre-manager {
+    background: rgba(61, 0, 96, 0.35);
+    color: var(--blush);
+}
+
+.event-card-status {
+    align-self: flex-start;
+    margin-top: 4px;
+}
+
+.event-card-cancelled {
+    opacity: 0.6;
+    filter: grayscale(0.25);
+}
+
+.event-card-cancelled:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: var(--border);
+}
+
 .event-card-name {
     font-size: 1.2rem;
     font-weight: 600;
@@ -1104,6 +1122,14 @@ a:hover { color: var(--text-primary); }
     box-shadow: 0 8px 20px rgba(212, 112, 154, 0.3);
 }
 
+.btn-card:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    background: var(--text-muted);
+}
+
 .full-width { width: 100%; }
 
 /* ── FORMS ───────────────────────────────────────────────── */
@@ -1161,6 +1187,7 @@ a:hover { color: var(--text-primary); }
     transition: var(--transition);
     width: 100%;
     cursor: text;
+    caret-color: var(--blush);
 }
 
 .form-group input:focus,
@@ -1337,6 +1364,12 @@ a:hover { color: var(--text-primary); }
     background: rgba(248, 113, 113, 0.1);
     color: #f87171;
     border: 1px solid rgba(248, 113, 113, 0.2);
+}
+
+.seat-summary {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-top: 6px;
 }
 
 /* ── MODAL ───────────────────────────────────────────────── */
@@ -1651,4 +1684,27 @@ a:hover { color: var(--text-primary); }
     color: var(--text-primary) !important;
     border-color: var(--border-hover);
     background: var(--accent-soft);
+}
+
+/* ── FALLBACK CURSOR (WHEN CUSTOM CURSOR JS DOES NOT RUN) ── */
+body:not(.custom-cursor-enabled),
+body:not(.custom-cursor-enabled) * {
+    cursor: auto !important;
+}
+
+body:not(.custom-cursor-enabled) a,
+body:not(.custom-cursor-enabled) button,
+body:not(.custom-cursor-enabled) [role='button'],
+body:not(.custom-cursor-enabled) .btn-primary,
+body:not(.custom-cursor-enabled) .btn-secondary,
+body:not(.custom-cursor-enabled) .btn-danger,
+body:not(.custom-cursor-enabled) .btn-card,
+body:not(.custom-cursor-enabled) .auth-tab,
+body:not(.custom-cursor-enabled) .auth-switch-btn {
+    cursor: pointer !important;
+}
+
+body:not(.custom-cursor-enabled) input,
+body:not(.custom-cursor-enabled) textarea {
+    cursor: text !important;
 }

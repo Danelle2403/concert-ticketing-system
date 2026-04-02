@@ -14,7 +14,12 @@
         <div class="nav-links">
             <a href="index.html">Browse Events</a>
             <a href="request-refund.html" class="active">My Tickets</a>
+            <a href="#" onclick="openNotificationsOverlay(event)">Notifications</a>
             <span id="nav-user"></span>
+        </div>
+        <div class="nav-actions">
+            <a href="login.html" id="nav-login" class="btn-nav">Login</a>
+            <a href="#" id="nav-logout" class="hidden btn-nav-outline" onclick="logout(event)">Logout</a>
         </div>
     </nav>
 
@@ -66,7 +71,20 @@
         </div>
     </div>
 
-    <script src="js/api.js"></script>
+    <!-- E-TICKET MODAL -->
+    <div id="ticket-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Your E-Ticket</h3>
+            <pre id="ticket-details" class="loading-msg">Loading ticket...</pre>
+            <div class="modal-buttons">
+                <button class="btn-secondary" onclick="closeTicketModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js?v=20260404"></script>
+    <script src="js/notifications-overlay.js?v=20260404"></script>
+    <script src="js/cursor.js?v=20260404"></script>
     <script>
 
         // Check login
@@ -78,6 +96,8 @@
             document.getElementById("not-logged-in").classList.remove("hidden");
         } else {
             document.getElementById("nav-user").textContent = `👤 ${user.name}`;
+            document.getElementById("nav-login").classList.add("hidden");
+            document.getElementById("nav-logout").classList.remove("hidden");
             loadTickets();
         }
 
@@ -93,6 +113,7 @@
                 }
 
                 const list = document.getElementById("tickets-list");
+                list.innerHTML = "";
                 data.events.forEach(ticket => {
                     const card = document.createElement("div");
                     card.className = "ticket-card";
@@ -108,6 +129,12 @@
                         </div>
                         <div class="ticket-actions">
                             <button 
+                                class="btn-secondary"
+                                onclick="openTicketModal('${ticket.ticketId}')"
+                            >
+                                View E-Ticket
+                            </button>
+                            <button 
                                 class="btn-danger"
                                 onclick="openRefundModal('${ticket.ticketId}', '${ticket.eventName}')"
                                 ${ticket.status !== 'active' ? 'disabled' : ''}
@@ -121,6 +148,7 @@
 
             } catch (err) {
                 document.getElementById("loading").classList.add("hidden");
+                document.getElementById("error-msg").textContent = err.message || "Failed to load tickets. Please try again later.";
                 document.getElementById("error-msg").classList.remove("hidden");
             }
         }
@@ -139,6 +167,23 @@
         function closeModal() {
             document.getElementById("refund-modal").classList.add("hidden");
             selectedTicketId = null;
+        }
+
+        async function openTicketModal(ticketId) {
+            document.getElementById("ticket-modal").classList.remove("hidden");
+            const details = document.getElementById("ticket-details");
+            details.textContent = "Loading ticket...";
+
+            try {
+                const data = await getTicketById(ticketId);
+                details.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                details.textContent = err.message || "Unable to load ticket right now.";
+            }
+        }
+
+        function closeTicketModal() {
+            document.getElementById("ticket-modal").classList.add("hidden");
         }
 
         // REFUND — calls POST /refunds/ticketId via Refund Composite
@@ -160,20 +205,28 @@
                         location.reload();
                     }, 2000);
                 } else {
+                    document.getElementById("refund-error").textContent = "Refund failed. Please try again.";
                     document.getElementById("refund-error").classList.remove("hidden");
                     document.getElementById("confirm-refund-btn").disabled = false;
                 }
 
             } catch (err) {
                 document.getElementById("refund-loading").classList.add("hidden");
+                document.getElementById("refund-error").textContent = err.message || "Refund failed. Please try again.";
                 document.getElementById("refund-error").classList.remove("hidden");
                 document.getElementById("confirm-refund-btn").disabled = false;
             }
+        }
+
+        function logout(e) {
+            e.preventDefault();
+            sessionStorage.removeItem("user");
+            sessionStorage.removeItem("selectedEvent");
+            sessionStorage.removeItem("lastPurchase");
+            window.location.href = "login.html";
         }
 
     </script>
 
 </body>
 </html>
-
-

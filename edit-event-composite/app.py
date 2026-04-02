@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
 import json
+import time
 import requests
 import pika
 
@@ -59,6 +60,18 @@ def get_active_tickets(event_id):
     if code != 200:
         return []
     return data.get("tickets", [])
+
+
+def wait_for_refund_completion(event_id, timeout_seconds=8, poll_seconds=0.5):
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        remaining = get_active_tickets(event_id)
+        if not remaining:
+            return {"completed": True, "remainingActive": 0}
+        time.sleep(poll_seconds)
+
+    remaining = get_active_tickets(event_id)
+    return {"completed": len(remaining) == 0, "remainingActive": len(remaining)}
 
 
 def enrich_with_user(ticket):
@@ -170,16 +183,27 @@ def cancel_event(eventId):
         refund_payload,
     )
 
+    queued_count = refund_result.get("queued", 0) if isinstance(refund_result, dict) else 0
+    refund_progress = {"completed": True, "remainingActive": 0}
+    if queued_count > 0:
+        refund_progress = wait_for_refund_completion(eventId, timeout_seconds=8, poll_seconds=0.5)
+
     response = {
         "eventId": eventId,
         "status": "cancelled",
         "event": event,
         "refunds": refund_result,
+        "refundProgress": refund_progress,
         "audienceNotified": len(audience),
     }
 
     if refund_code not in (200, 202):
         response["warning"] = "Refund queueing encountered issues"
+    elif not refund_progress.get("completed", False):
+        response["warning"] = (
+            f"Refunds are still processing. "
+            f"{refund_progress.get('remainingActive', 0)} active ticket(s) remain."
+        )
 
     return jsonify(response), 200
 
