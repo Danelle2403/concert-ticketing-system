@@ -218,6 +218,7 @@ def create_app(test_config=None):
         EVENT_SERVICE_URL=os.environ.get("EVENT_SERVICE_URL", "http://localhost:5002"),
         SEAT_INVENTORY_URL=os.environ.get("SEAT_INVENTORY_URL", "http://localhost:5004"),
         REFUND_SERVICE_URL=os.environ.get("REFUND_SERVICE_URL", "http://refund-composite:5000"),
+        UI_BASE_URL=os.environ.get("UI_BASE_URL", "http://localhost:8080"),
         RABBITMQ_URL=os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/%2F"),
         NOTIFICATION_EXCHANGE=os.environ.get("NOTIFICATION_EXCHANGE", "concert.events"),
         EVENT_UPDATED_ROUTING_KEY=os.environ.get("EVENT_UPDATED_ROUTING_KEY", "event.updated"),
@@ -263,12 +264,39 @@ def create_app(test_config=None):
             "requestRequired": False,
             "provider": "stripe",
             "service": "refund-composite",
-            "status": "planned",
+            "status": "processing",
             "triggered": False,
             "eventRefundEndpoint": (
                 f"{refund_service_url}/refunds/event/{event_id}" if refund_service_url else None
             ),
         }
+
+    def trigger_event_refunds(event_id, cancellation_reason):
+        refund_service_url = str(app.config.get("REFUND_SERVICE_URL") or "").rstrip("/")
+        if not refund_service_url:
+            raise service_clients.ServiceError(
+                503,
+                "REFUND_SERVICE_NOT_CONFIGURED",
+                "Refund service URL is not configured",
+            )
+
+        code, body = service_clients.request_json(
+            "POST",
+            f"{refund_service_url}/refunds/event/{event_id}",
+            payload={
+                "source": "event_cancelled",
+                "reason": cancellation_reason,
+            },
+            timeout=app.config["REQUEST_TIMEOUT_SECONDS"],
+        )
+        if code != 200:
+            raise service_clients.ServiceError(
+                code,
+                "REFUND_BATCH_FAILED",
+                "Refund Composite could not process event refunds",
+                body,
+            )
+        return body
 
     def handle_create_event():
         data = request.get_json(silent=True) or {}
@@ -509,7 +537,12 @@ def create_app(test_config=None):
                 },
             }
 
-            notification_payload = event_bus.build_event_updated_message(current_event, event, manager)
+            notification_payload = event_bus.build_event_updated_message(
+                current_event,
+                event,
+                manager,
+                ui_base_url=app.config.get("UI_BASE_URL"),
+            )
             response_payload["integration"]["notificationQueued"] = queue_notification(
                 app.config["EVENT_UPDATED_ROUTING_KEY"],
                 notification_payload,
@@ -577,21 +610,47 @@ def create_app(test_config=None):
                 app.config["REQUEST_TIMEOUT_SECONDS"],
             )
 
+            refund_flow = build_refund_flow_plan(event_id)
             response_payload = {
                 "manager": manager,
                 "event": event,
                 "integration": {
                     "notificationQueued": False,
-                    "refundFlow": build_refund_flow_plan(event_id),
+                    "refundFlow": refund_flow,
                 },
             }
 
-            notification_payload = event_bus.build_event_cancelled_message(current_event, event, manager)
+            notification_payload = event_bus.build_event_cancelled_message(
+                current_event,
+                event,
+                manager,
+                ui_base_url=app.config.get("UI_BASE_URL"),
+            )
             response_payload["integration"]["notificationQueued"] = queue_notification(
                 app.config["EVENT_CANCELLED_ROUTING_KEY"],
                 notification_payload,
                 warnings,
             )
+
+            try:
+                refund_result = trigger_event_refunds(event_id, cancel_payload.get("reason"))
+                refund_flow["triggered"] = True
+                refund_flow["status"] = (
+                    "completed" if refund_result.get("failed", 0) == 0 else "partial_failure"
+                )
+                refund_flow["summary"] = refund_result
+            except service_clients.ServiceError as error:
+                refund_flow["triggered"] = True
+                refund_flow["status"] = "failed"
+                refund_flow["error"] = {
+                    "code": error.code,
+                    "message": error.message,
+                    "details": error.payload,
+                }
+                warnings.append(
+                    "The event was cancelled, but the refund batch did not fully complete. "
+                    "Check Refund Composite for manual follow-up."
+                )
 
             write_audit_log(
                 "CANCEL_EVENT",

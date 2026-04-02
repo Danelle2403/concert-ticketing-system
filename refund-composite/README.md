@@ -6,7 +6,10 @@ Scenario orchestration service for ticket refunds and event-wide refund batches.
 
 - loads ticket ownership/status from User Service
 - looks up purchase mappings from Purchase Composite
+- creates Stripe refunds through Payment Service
 - releases inventory through Seat Inventory when a mapped hold exists
+- invalidates or updates downstream ticket/order state where required
+- sends refund success/failure emails through Notification Service
 - updates ticket state in User Service
 - updates purchase/order state through Purchase Composite
 
@@ -19,12 +22,14 @@ Scenario orchestration service for ticket refunds and event-wide refund batches.
 ## Current state
 
 - single-ticket and event-batch refund flows are implemented
-- create/edit cancel flows do not trigger this service yet; they currently return planned refund metadata so later wiring is straightforward
-- refund IDs and batch IDs are local composite IDs, not Stripe-native IDs
+- event cancellation orchestration now triggers event-batch refunds automatically from the create/edit event composite
+- event reschedule flows allow the fan to trigger a Stripe refund from My Tickets
+- refund IDs returned by this service are the Stripe refund IDs when Stripe succeeds
 
 ## Run
 
-The repo root stack exposes this service on `http://localhost:5011`.
+The browser should reach this service through Kong at `http://localhost:8000/refunds`.
+The direct container port `http://localhost:5011` is for internal calls, health checks, and debugging.
 
 ## Local tests
 

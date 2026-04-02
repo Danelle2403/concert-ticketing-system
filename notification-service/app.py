@@ -69,6 +69,13 @@ def format_change_value(field, value):
     return str(value)
 
 
+def format_money(amount, currency):
+    if amount is None:
+        return "Amount unavailable"
+    normalized_currency = str(currency or "sgd").upper()
+    return f"{normalized_currency} {float(amount):.2f}"
+
+
 def build_change_lines(changes):
     lines = []
     for change in changes:
@@ -100,19 +107,20 @@ def build_default_refund_info(notification_type):
             "requestRequired": False,
             "provider": "stripe",
             "message": (
-                "Refunds for cancelled events are intended to go back to your original "
-                "payment method through Stripe once the refund flow is enabled."
+                "Your refund is being processed automatically back to your original "
+                "payment method through Stripe. No separate request is needed."
             ),
+            "autoRefund": True,
         }
 
     return {
         "requestRequired": True,
         "provider": "stripe",
         "message": (
-            "If the updated event details no longer work for you, you can request a refund. "
-            "Approved refunds are intended to be returned through Stripe to your original "
-            "payment method once the refund flow is enabled."
+            "If the updated event details no longer work for you, use the refund button in "
+            "My Tickets to return the ticket to your original payment method through Stripe."
         ),
+        "autoRefund": False,
     }
 
 
@@ -130,12 +138,88 @@ def build_subject(payload):
     notification_type = get_notification_type(payload)
     event_snapshot = get_event_snapshot(payload)
     title = event_snapshot.get("title") or payload.get("eventId")
-    prefix = "Event cancelled" if notification_type == "event.cancelled" else "Event update"
+    if notification_type == "purchase.confirmed":
+        prefix = "Purchase confirmed"
+    elif notification_type == "refund.success":
+        prefix = "Refund confirmed"
+    elif notification_type == "refund.failure":
+        prefix = "Refund requires attention"
+    else:
+        prefix = "Event cancelled" if notification_type == "event.cancelled" else "Event update"
     return f"{prefix}: {title}"
 
 
 def build_plain_text_body(payload, recipient_name):
     notification_type = get_notification_type(payload)
+    if notification_type == "purchase.confirmed":
+        event_snapshot = payload.get("event") or {}
+        ticket_ids = payload.get("ticketIds") or []
+        return "\n".join(
+            [
+                f"Hi {recipient_name or 'there'},",
+                "",
+                f'Your purchase for "{event_snapshot.get("title") or payload.get("eventId")}" is confirmed.',
+                f"Venue: {event_snapshot.get('venue') or 'Venue TBC'}",
+                f"Date: {event_snapshot.get('date') or 'Date TBC'}",
+                f"Purchase ID: {payload.get('purchaseId')}",
+                f"Amount paid: {format_money(payload.get('amountPaid'), payload.get('currency'))}",
+                f"Ticket IDs: {', '.join(ticket_ids) if ticket_ids else 'Pending'}",
+                "",
+                "Keep this email as your receipt and refer to My Tickets for your latest ticket status.",
+                "",
+                "Concert Hub",
+            ]
+        )
+
+    if notification_type == "refund.success":
+        event_snapshot = payload.get("event") or {}
+        return "\n".join(
+            [
+                f"Hi {recipient_name or 'there'},",
+                "",
+                f'Your refund for "{event_snapshot.get("title") or payload.get("eventId")}" has been processed successfully.',
+                f"Ticket ID: {payload.get('ticketId')}",
+                f"Refund ID: {payload.get('refundId')}",
+                f"Amount refunded: {format_money(payload.get('amountPaid'), payload.get('currency'))}",
+                "",
+                "The refund will appear on your original payment method once Stripe and your bank complete processing.",
+                "",
+                "Concert Hub",
+            ]
+        )
+
+    if notification_type == "refund.failure":
+        event_snapshot = payload.get("event") or {}
+        support_email = payload.get("supportEmail") or "support@concerthub.local"
+        source = str(payload.get("source") or "customer_request")
+        manager_line = ""
+        if source == "event_change_request":
+            manager = payload.get("manager") or {}
+            manager_line = (
+                f"Event manager alerted: {manager.get('name')} <{manager.get('email')}>\n"
+                if manager.get("email")
+                else ""
+            )
+        guidance = (
+            "Please contact customer support to complete the refund manually."
+            if source == "event_cancelled"
+            else "We have alerted the event manager and support team to follow up."
+        )
+        return "\n".join(
+            [
+                f"Hi {recipient_name or 'there'},",
+                "",
+                f'We could not complete the refund for "{event_snapshot.get("title") or payload.get("eventId")}".',
+                f"Ticket ID: {payload.get('ticketId')}",
+                f"Requested amount: {format_money(payload.get('amountPaid'), payload.get('currency'))}",
+                manager_line.rstrip(),
+                guidance,
+                f"Support: {support_email}",
+                "",
+                "Concert Hub",
+            ]
+        ).replace("\n\n\n", "\n\n")
+
     event_snapshot = get_event_snapshot(payload)
     title = event_snapshot.get("title") or payload.get("eventId")
     venue = format_venue_label(event_snapshot.get("venue")) or "Venue TBC"
@@ -151,6 +235,11 @@ def build_plain_text_body(payload, recipient_name):
     ]
 
     if notification_type == "event.cancelled":
+        action_line = (
+            f"Track your refund: {refund_info['actionUrl']}"
+            if refund_info.get("actionUrl")
+            else None
+        )
         body.extend(
             [
                 f'The event "{title}" has been cancelled.',
@@ -160,7 +249,7 @@ def build_plain_text_body(payload, recipient_name):
                 f"Reason: {cancellation_reason}",
                 "",
                 f"Refund info: {refund_info['message']}",
-                "No separate purchase action is needed from this email.",
+                action_line or "No separate purchase action is needed from this email.",
                 "",
                 "Concert Hub",
             ]
@@ -190,6 +279,11 @@ def build_plain_text_body(payload, recipient_name):
         [
             "Please review the updated event details before attending.",
             f"Refund info: {refund_info['message']}",
+            (
+                f"{refund_info.get('actionLabel')}: {refund_info.get('actionUrl')}"
+                if refund_info.get("actionUrl")
+                else ""
+            ),
             "",
             "Concert Hub",
         ]
@@ -199,6 +293,74 @@ def build_plain_text_body(payload, recipient_name):
 
 def build_html_body(payload, recipient_name):
     notification_type = get_notification_type(payload)
+    if notification_type == "purchase.confirmed":
+        event_snapshot = payload.get("event") or {}
+        ticket_ids = payload.get("ticketIds") or []
+        ticket_list = "".join([f"<li>{html.escape(str(ticket_id))}</li>" for ticket_id in ticket_ids])
+        return f"""
+        <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
+          <p>Hi {html.escape(recipient_name or 'there')},</p>
+          <p>Your purchase for <strong>{html.escape(str(event_snapshot.get("title") or payload.get("eventId")))}</strong> is confirmed.</p>
+          <p>
+            <strong>Venue:</strong> {html.escape(str(event_snapshot.get("venue") or "Venue TBC"))}<br>
+            <strong>Date:</strong> {html.escape(str(event_snapshot.get("date") or "Date TBC"))}<br>
+            <strong>Purchase ID:</strong> {html.escape(str(payload.get("purchaseId")))}<br>
+            <strong>Amount paid:</strong> {html.escape(format_money(payload.get("amountPaid"), payload.get("currency")))}
+          </p>
+          <p><strong>Ticket IDs:</strong></p>
+          <ul>{ticket_list or "<li>Pending</li>"}</ul>
+          <p>Keep this email as your receipt and refer to My Tickets for your latest ticket status.</p>
+          <p>Concert Hub</p>
+        </div>
+        """.strip()
+
+    if notification_type == "refund.success":
+        event_snapshot = payload.get("event") or {}
+        return f"""
+        <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
+          <p>Hi {html.escape(recipient_name or 'there')},</p>
+          <p>Your refund for <strong>{html.escape(str(event_snapshot.get("title") or payload.get("eventId")))}</strong> has been processed successfully.</p>
+          <p>
+            <strong>Ticket ID:</strong> {html.escape(str(payload.get("ticketId")))}<br>
+            <strong>Refund ID:</strong> {html.escape(str(payload.get("refundId")))}<br>
+            <strong>Amount refunded:</strong> {html.escape(format_money(payload.get("amountPaid"), payload.get("currency")))}
+          </p>
+          <p>The refund will appear on your original payment method once Stripe and your bank complete processing.</p>
+          <p>Concert Hub</p>
+        </div>
+        """.strip()
+
+    if notification_type == "refund.failure":
+        event_snapshot = payload.get("event") or {}
+        support_email = payload.get("supportEmail") or "support@concerthub.local"
+        source = str(payload.get("source") or "customer_request")
+        manager = payload.get("manager") or {}
+        manager_html = ""
+        if source == "event_change_request" and manager.get("email"):
+            manager_html = (
+                f"<p><strong>Event manager alerted:</strong> {html.escape(str(manager.get('name') or 'Manager'))} "
+                f"&lt;{html.escape(str(manager.get('email')))}&gt;</p>"
+            )
+        guidance = (
+            "Please contact customer support to complete the refund manually."
+            if source == "event_cancelled"
+            else "We have alerted the event manager and support team to follow up."
+        )
+        return f"""
+        <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
+          <p>Hi {html.escape(recipient_name or 'there')},</p>
+          <p>We could not complete the refund for <strong>{html.escape(str(event_snapshot.get("title") or payload.get("eventId")))}</strong>.</p>
+          <p>
+            <strong>Ticket ID:</strong> {html.escape(str(payload.get("ticketId")))}<br>
+            <strong>Requested amount:</strong> {html.escape(format_money(payload.get("amountPaid"), payload.get("currency")))}
+          </p>
+          {manager_html}
+          <p>{html.escape(guidance)}</p>
+          <p><strong>Support:</strong> {html.escape(str(support_email))}</p>
+          <p>Concert Hub</p>
+        </div>
+        """.strip()
+
     event_snapshot = get_event_snapshot(payload)
     title = event_snapshot.get("title") or payload.get("eventId")
     venue = format_venue_label(event_snapshot.get("venue")) or "Venue TBC"
@@ -220,6 +382,13 @@ def build_html_body(payload, recipient_name):
     )
 
     if notification_type == "event.cancelled":
+        action_html = (
+            f'<p><a href="{html.escape(str(refund_info["actionUrl"]))}" '
+            'style="display:inline-block;padding:10px 16px;background:#0f172a;color:#fff;'
+            'text-decoration:none;border-radius:8px;">Track refund status</a></p>'
+            if refund_info.get("actionUrl")
+            else "<p>No separate purchase action is needed from this email.</p>"
+        )
         return f"""
         <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
           <p>Hi {html.escape(recipient_name or 'there')},</p>
@@ -231,10 +400,19 @@ def build_html_body(payload, recipient_name):
             <strong>Reason:</strong> {html.escape(str(cancellation_reason))}
           </p>
           <p><strong>Refund info:</strong> {html.escape(refund_info["message"])}</p>
-          <p>No separate purchase action is needed from this email.</p>
+          {action_html}
           <p>Concert Hub</p>
         </div>
         """.strip()
+
+    action_html = (
+        f'<p><a href="{html.escape(str(refund_info["actionUrl"]))}" '
+        'style="display:inline-block;padding:10px 16px;background:#0f172a;color:#fff;'
+        'text-decoration:none;border-radius:8px;">'
+        f'{html.escape(str(refund_info.get("actionLabel") or "Request a refund"))}</a></p>'
+        if refund_info.get("actionUrl")
+        else ""
+    )
 
     return f"""
     <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
@@ -247,6 +425,7 @@ def build_html_body(payload, recipient_name):
       {"<p><strong>Changed details:</strong></p><ul>" + change_items + "</ul>" if change_items else ""}
       <p>Please review the updated event details before attending.</p>
       <p><strong>Refund info:</strong> {html.escape(refund_info["message"])}</p>
+      {action_html}
       <p>Concert Hub</p>
     </div>
     """.strip()
@@ -296,7 +475,7 @@ def create_app(test_config=None):
     def log_json(payload):
         print(json.dumps(payload), flush=True)
 
-    def get_ticket_holders(event_id):
+    def get_ticket_holders(event_id, notification_type):
         status_code, payload = request_json(
             "GET",
             f"{app.config['USER_SERVICE_URL']}/user/tickets/by-event/{event_id}",
@@ -306,16 +485,19 @@ def create_app(test_config=None):
             raise RuntimeError(f"Unable to fetch issued tickets for event {event_id}")
 
         tickets = payload.get("tickets") or []
-        active_or_open = [
+        allowed_statuses = {"active"}
+        if notification_type == "event.cancelled":
+            allowed_statuses = {"active", "refunded"}
+
+        return [
             ticket
             for ticket in tickets
-            if str(ticket.get("status", "")).lower() not in {"cancelled", "refunded"}
+            if str(ticket.get("status", "")).lower() in allowed_statuses
         ]
-        return active_or_open
 
-    def resolve_recipients(event_id):
+    def resolve_recipients(event_id, notification_type):
         recipients = OrderedDict()
-        tickets = get_ticket_holders(event_id)
+        tickets = get_ticket_holders(event_id, notification_type)
         for ticket in tickets:
             user_id = ticket.get("userId")
             if user_id in recipients or user_id is None:
@@ -341,6 +523,22 @@ def create_app(test_config=None):
             }
 
         return list(recipients.values())
+
+    def send_direct_notification(recipients, payload):
+        sent = 0
+        for recipient in recipients:
+            if not recipient or not recipient.get("email"):
+                continue
+            send_email(recipient, payload)
+            sent += 1
+
+        consumer_state["lastMessageAt"] = utc_now()
+        consumer_state["lastRecipientCount"] = sent
+        consumer_state["lastEventId"] = (
+            (payload.get("event") or {}).get("eventId") or payload.get("eventId")
+        )
+        consumer_state["lastError"] = None
+        return sent
 
     def send_email(recipient, payload):
         subject = build_subject(payload)
@@ -389,7 +587,7 @@ def create_app(test_config=None):
         if not event_id:
             raise RuntimeError("eventId is required in notification payload")
 
-        recipients = resolve_recipients(event_id)
+        recipients = resolve_recipients(event_id, get_notification_type(payload))
         for recipient in recipients:
             send_email(recipient, payload)
 
@@ -499,6 +697,37 @@ def create_app(test_config=None):
         payload = request.get_json() or {}
         result = process_notification(payload)
         return jsonify({"status": "processed", **result}), 200
+
+    @app.route("/notifications/purchase-confirmation", methods=["POST"])
+    def dispatch_purchase_confirmation():
+        payload = request.get_json() or {}
+        payload["type"] = "purchase.confirmed"
+        fan = payload.get("fan") or {
+            "name": payload.get("buyerName"),
+            "email": payload.get("buyerEmail"),
+        }
+        sent = send_direct_notification([fan], payload)
+        return jsonify({"status": "processed", "recipients": sent}), 200
+
+    @app.route("/notifications/refund-success", methods=["POST"])
+    def dispatch_refund_success():
+        payload = request.get_json() or {}
+        payload["type"] = "refund.success"
+        fan = payload.get("fan") or {}
+        sent = send_direct_notification([fan], payload)
+        return jsonify({"status": "processed", "recipients": sent}), 200
+
+    @app.route("/notifications/refund-failure", methods=["POST"])
+    def dispatch_refund_failure():
+        payload = request.get_json() or {}
+        payload["type"] = "refund.failure"
+        fan = payload.get("fan") or {}
+        manager = payload.get("manager") or {}
+        recipients = [fan]
+        if str(payload.get("source") or "") == "event_change_request":
+            recipients.append(manager)
+        sent = send_direct_notification(recipients, payload)
+        return jsonify({"status": "processed", "recipients": sent}), 200
 
     if not app.config.get("TESTING") and app.config.get("START_CONSUMER", True):
         consumer_thread = threading.Thread(target=consume_forever, daemon=True)

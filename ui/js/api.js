@@ -127,10 +127,9 @@ async function getUserEvents(userId) {
 }
 
 async function getManagingEvents(userId) {
-    const payload = await apiRequest("/events", {
+    const payload = await apiRequest("/manager/events", {
         query: {
-            managerId: userId,
-            includeConfig: true
+            managerId: userId
         }
     });
 
@@ -160,7 +159,7 @@ async function getEventById(eventId) {
 
 // Create/Edit Event Composite via Kong
 async function createManagerEvent(data) {
-    const payload = await apiRequest("/events/create", {
+    const payload = await apiRequest("/manager/events", {
         method: "POST",
         body: data
     });
@@ -169,7 +168,7 @@ async function createManagerEvent(data) {
 }
 
 async function updateEvent(eventId, data) {
-    const payload = await apiRequest(`/events/${eventId}/edit`, {
+    const payload = await apiRequest(`/manager/events/${eventId}`, {
         method: "PUT",
         body: data
     });
@@ -177,13 +176,32 @@ async function updateEvent(eventId, data) {
     return payload.data;
 }
 
-async function cancelEvent(eventId) {
-    return apiRequest(`/events/${eventId}/cancel`, {
-        method: "POST"
+async function cancelEvent(eventId, data) {
+    return apiRequest(`/manager/events/${eventId}/cancel`, {
+        method: "POST",
+        body: data
     });
 }
 
 // Purchase Composite
+async function getPurchaseConfig() {
+    return apiRequest("/purchase/config");
+}
+
+async function createCheckoutSession(data) {
+    return apiRequest("/purchase/checkout/session", {
+        method: "POST",
+        body: data
+    });
+}
+
+async function confirmCheckoutSession(data) {
+    return apiRequest("/purchase/checkout/confirm", {
+        method: "POST",
+        body: data
+    });
+}
+
 async function buyTicket(data) {
     return apiRequest("/purchase/checkout", {
         method: "POST",
@@ -196,14 +214,16 @@ async function getPurchaseStatus(purchaseId) {
 }
 
 // Refund Composite
-async function requestRefundByTicket(ticketId) {
+async function requestRefundByTicket(ticketId, data = {}) {
     return apiRequest(`/refunds/${ticketId}`, {
-        method: "POST"
+        method: "POST",
+        body: data
     });
 }
 
-async function requestRefundByEvent(eventId) {
+async function requestRefundByEvent(eventId, data = {}) {
     return apiRequest(`/refunds/event/${eventId}`, {
-        method: "POST"
+        method: "POST",
+        body: data
     });
 }

@@ -11,7 +11,6 @@
 </head>
 <body>
 
-    <!-- NAVBAR -->
     <nav class="navbar">
         <a href="index.html" class="nav-brand">
             <img src="assets/concert-hub-mark.svg" alt="" class="brand-mark">
@@ -25,8 +24,6 @@
     </nav>
 
     <main class="container form-container">
-
-        <!-- EVENT SUMMARY -->
         <div id="event-summary" class="event-summary-card">
             <h2 id="event-name">Loading event...</h2>
             <p id="event-venue"></p>
@@ -34,9 +31,8 @@
             <p id="event-price"></p>
         </div>
 
-        <!-- PURCHASE FORM -->
         <form id="purchase-form" class="form-panel">
-            <h2>Your Details</h2>
+            <h2>Ticket Details</h2>
 
             <div class="form-group">
                 <label for="buyer-name">Full Name</label>
@@ -49,6 +45,11 @@
             </div>
 
             <div class="form-group">
+                <label for="seat-category">Seat Category</label>
+                <select id="seat-category"></select>
+            </div>
+
+            <div class="form-group">
                 <label for="ticket-qty">Number of Tickets</label>
                 <input type="number" id="ticket-qty" value="1" min="1" max="10">
             </div>
@@ -56,78 +57,202 @@
             <div class="form-group">
                 <label>Total Price</label>
                 <p id="total-price" class="total-price">$0.00</p>
+                <p id="hold-timer" class="event-aux hidden"></p>
             </div>
 
-            <!-- STATUS MESSAGES -->
-            <div id="purchase-error" class="error-msg hidden">
-                Purchase failed. Please try again.
-            </div>
+            <div id="purchase-error" class="error-msg hidden"></div>
             <div id="purchase-success" class="success-msg hidden">
-                🎉 Tickets booked! Redirecting...
+                Payment complete. Your tickets are confirmed.
             </div>
             <div id="purchase-loading" class="loading-msg hidden">
-                Processing your payment...
+                Reserving your seats...
             </div>
 
-            <button type="submit" class="btn-primary full-width">
-                Confirm & Pay
+            <button type="submit" class="btn-primary full-width" id="reserve-button">
+                Reserve Seats & Continue
             </button>
             <button type="button" class="btn-secondary full-width" onclick="window.location.href='index.html'">
                 Cancel
             </button>
         </form>
 
+        <section id="payment-panel" class="form-panel hidden">
+            <h2>Secure Payment</h2>
+            <p class="event-aux">Your seats are reserved for 10 minutes while you complete payment.</p>
+            <div id="payment-element" style="padding: 14px 0;"></div>
+            <div id="stripe-error" class="error-msg hidden"></div>
+            <div id="stripe-loading" class="loading-msg hidden">Confirming payment...</div>
+            <button type="button" class="btn-primary full-width" id="pay-button">
+                Pay Now
+            </button>
+        </section>
     </main>
 
+    <script src="https://js.stripe.com/v3/"></script>
     <script src="js/api.js"></script>
     <script src="js/form-validation.js"></script>
     <script>
-        const { bindLiveValidation, clearErrors, validateEmail, validateNumber, validateRequired, focusFirstError } = window.formValidation;
+        const {
+            bindLiveValidation,
+            clearErrors,
+            validateEmail,
+            validateNumber,
+            validateRequired,
+            focusFirstError
+        } = window.formValidation;
         bindLiveValidation(document);
 
-        // Load logged in user
         const user = JSON.parse(sessionStorage.getItem("user"));
+        const event = JSON.parse(sessionStorage.getItem("selectedEvent"));
+
+        let paymentConfig = null;
+        let stripe = null;
+        let elements = null;
+        let paymentElement = null;
+        let activeCheckoutSession = null;
+        let holdTimerHandle = null;
+
+        if (!event) {
+            window.location.href = "index.html";
+        }
+
         if (user) {
             document.getElementById("nav-user").textContent = `👤 ${user.name}`;
             document.getElementById("buyer-name").value = user.name || "";
             document.getElementById("buyer-email").value = user.email || "";
         }
 
-        // Load selected event from sessionStorage
-        const event = JSON.parse(sessionStorage.getItem("selectedEvent"));
-        if (event) {
-            document.getElementById("event-name").textContent = event.name;
-            document.getElementById("event-venue").textContent = `📍 ${event.venue}`;
-            document.getElementById("event-date").textContent = `📅 ${event.date}`;
-            document.getElementById("event-price").textContent = `From $${event.price} per ticket`;
-            updateTotal();
-        } else {
-            // No event selected, send back to homepage
-            window.location.href = "index.html";
+        document.getElementById("event-name").textContent = event.name;
+        document.getElementById("event-venue").textContent = `📍 ${event.venue}`;
+        document.getElementById("event-date").textContent = `📅 ${event.dateTimeLabel || event.date}`;
+        document.getElementById("event-price").textContent = event.priceLabel || `From $${event.price}`;
+
+        const seatCategoryField = document.getElementById("seat-category");
+        const qtyField = document.getElementById("ticket-qty");
+        seatCategoryField.addEventListener("change", updateTotal);
+        qtyField.addEventListener("input", updateTotal);
+
+        function getSeatOptions() {
+            const tiers = Array.isArray(event.pricingTiers) ? event.pricingTiers : [];
+            return tiers
+                .map((tier) => ({
+                    code: tier.code || tier.name,
+                    label: tier.name || tier.code,
+                    price: Number(tier.price) || 0,
+                    currency: (tier.currency || "SGD").toUpperCase()
+                }))
+                .sort((left, right) => left.price - right.price);
         }
 
-        // Update total price when quantity changes
-        document.getElementById("ticket-qty").addEventListener("input", updateTotal);
+        function renderSeatOptions() {
+            const options = getSeatOptions();
+            seatCategoryField.innerHTML = "";
+
+            options.forEach((option) => {
+                const optionElement = document.createElement("option");
+                optionElement.value = option.code;
+                optionElement.dataset.price = String(option.price);
+                optionElement.dataset.currency = option.currency;
+                optionElement.textContent = `${option.label} · $${option.price.toFixed(2)}`;
+                seatCategoryField.appendChild(optionElement);
+            });
+
+            updateTotal();
+        }
+
+        function selectedSeatOption() {
+            const option = seatCategoryField.selectedOptions[0];
+            if (!option) {
+                return { code: "", price: 0, currency: "SGD" };
+            }
+            return {
+                code: option.value,
+                price: Number(option.dataset.price || 0),
+                currency: option.dataset.currency || "SGD"
+            };
+        }
 
         function updateTotal() {
-            const qty = parseInt(document.getElementById("ticket-qty").value) || 1;
-            const price = parseFloat(event.price) || 0;
-            document.getElementById("total-price").textContent = `$${(qty * price).toFixed(2)}`;
+            const qty = parseInt(qtyField.value, 10) || 1;
+            const seat = selectedSeatOption();
+            document.getElementById("total-price").textContent = `$${(qty * seat.price).toFixed(2)}`;
         }
 
-        // PURCHASE — calls POST /purchase/checkout
-        async function handlePurchase() {
+        function showError(message) {
+            const errorBox = document.getElementById("purchase-error");
+            errorBox.textContent = message;
+            errorBox.classList.remove("hidden");
+        }
+
+        function clearMessages() {
+            document.getElementById("purchase-error").classList.add("hidden");
+            document.getElementById("purchase-success").classList.add("hidden");
+            document.getElementById("stripe-error").classList.add("hidden");
+        }
+
+        function startHoldCountdown(expiresAt) {
+            const label = document.getElementById("hold-timer");
+            clearInterval(holdTimerHandle);
+            label.classList.remove("hidden");
+
+            function refresh() {
+                const remainingMs = new Date(expiresAt).getTime() - Date.now();
+                if (remainingMs <= 0) {
+                    clearInterval(holdTimerHandle);
+                    label.textContent = "Seat hold expired. Reserve again to continue.";
+                    return;
+                }
+
+                const totalSeconds = Math.floor(remainingMs / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                label.textContent = `Seat hold expires in ${minutes}:${String(seconds).padStart(2, "0")}`;
+            }
+
+            refresh();
+            holdTimerHandle = setInterval(refresh, 1000);
+        }
+
+        async function ensurePurchaseConfig() {
+            if (!paymentConfig) {
+                paymentConfig = await getPurchaseConfig();
+            }
+            return paymentConfig;
+        }
+
+        async function mountPaymentElement(clientSecret) {
+            const config = await ensurePurchaseConfig();
+            if (!config.publishableKey) {
+                throw new Error("Stripe is not configured for the UI yet.");
+            }
+
+            stripe = Stripe(config.publishableKey);
+            elements = stripe.elements({
+                clientSecret,
+                appearance: {
+                    theme: "stripe",
+                    variables: {
+                        colorPrimary: "#0f172a",
+                        borderRadius: "12px"
+                    }
+                }
+            });
+
+            if (paymentElement) {
+                paymentElement.unmount();
+            }
+
+            paymentElement = elements.create("payment");
+            paymentElement.mount("#payment-element");
+        }
+
+        async function reserveSeatsAndPreparePayment() {
             const form = document.getElementById("purchase-form");
             const nameField = document.getElementById("buyer-name");
             const emailField = document.getElementById("buyer-email");
-            const qtyField = document.getElementById("ticket-qty");
 
             clearErrors(form);
-            document.getElementById("purchase-error").classList.add("hidden");
-            document.getElementById("purchase-success").classList.add("hidden");
-            const name = nameField.value.trim();
-            const email = emailField.value.trim();
-            const qty = parseInt(qtyField.value, 10);
+            clearMessages();
 
             let isValid = true;
             isValid = validateRequired(nameField, "Enter the buyer's full name.") && isValid;
@@ -144,48 +269,89 @@
                 return;
             }
 
-            // Check user is logged in
             if (!user) {
                 window.location.href = "login.html";
                 return;
             }
 
             document.getElementById("purchase-loading").classList.remove("hidden");
-            document.getElementById("purchase-error").classList.add("hidden");
 
             try {
-                const data = await buyTicket({
+                const seat = selectedSeatOption();
+                activeCheckoutSession = await createCheckoutSession({
                     userId: user.userId,
                     eventId: event.eventId,
-                    quantity: qty,
-                    name,
-                    email
+                    quantity: parseInt(qtyField.value, 10),
+                    seatCategory: seat.code,
+                    name: nameField.value.trim(),
+                    email: emailField.value.trim()
                 });
 
+                await mountPaymentElement(activeCheckoutSession.clientSecret);
+                startHoldCountdown(activeCheckoutSession.holdExpiresAt);
+                document.getElementById("payment-panel").classList.remove("hidden");
+            } catch (error) {
+                showError(error.message || "Unable to start checkout.");
+            } finally {
                 document.getElementById("purchase-loading").classList.add("hidden");
-
-                if (data && data.purchaseId) {
-                    // Save purchase for status tracking
-                    sessionStorage.setItem("lastPurchase", JSON.stringify(data));
-                    document.getElementById("purchase-success").classList.remove("hidden");
-                    setTimeout(() => {
-                        window.location.href = "request-refund.html";
-                    }, 2000);
-                } else {
-                    document.getElementById("purchase-error").classList.remove("hidden");
-                }
-
-            } catch (err) {
-                document.getElementById("purchase-loading").classList.add("hidden");
-                document.getElementById("purchase-error").classList.remove("hidden");
             }
         }
 
-        document.getElementById("purchase-form").addEventListener("submit", (event) => {
-            event.preventDefault();
-            handlePurchase();
+        async function confirmStripePayment() {
+            if (!stripe || !elements || !activeCheckoutSession) {
+                return;
+            }
+
+            clearMessages();
+            document.getElementById("stripe-loading").classList.remove("hidden");
+            document.getElementById("pay-button").disabled = true;
+
+            try {
+                const result = await stripe.confirmPayment({
+                    elements,
+                    redirect: "if_required"
+                });
+
+                if (result.error) {
+                    throw new Error(result.error.message || "Stripe payment failed.");
+                }
+
+                if (!result.paymentIntent || result.paymentIntent.status !== "succeeded") {
+                    throw new Error("Payment has not completed yet. Please try again.");
+                }
+
+                const purchase = await confirmCheckoutSession({
+                    checkoutSessionId: activeCheckoutSession.checkoutSessionId,
+                    paymentIntentId: result.paymentIntent.id
+                });
+
+                sessionStorage.setItem("lastPurchase", JSON.stringify(purchase));
+                document.getElementById("purchase-success").classList.remove("hidden");
+
+                setTimeout(() => {
+                    window.location.href = "request-refund.html";
+                }, 1600);
+            } catch (error) {
+                const stripeError = document.getElementById("stripe-error");
+                stripeError.textContent = error.message || "Payment failed.";
+                stripeError.classList.remove("hidden");
+            } finally {
+                document.getElementById("stripe-loading").classList.add("hidden");
+                document.getElementById("pay-button").disabled = false;
+            }
+        }
+
+        renderSeatOptions();
+        ensurePurchaseConfig().catch(() => null);
+
+        document.getElementById("purchase-form").addEventListener("submit", (browserEvent) => {
+            browserEvent.preventDefault();
+            reserveSeatsAndPreparePayment();
         });
 
+        document.getElementById("pay-button").addEventListener("click", () => {
+            confirmStripePayment();
+        });
     </script>
 
 </body>

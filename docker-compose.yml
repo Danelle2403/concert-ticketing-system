@@ -186,8 +186,12 @@ services:
       - EVENT_SERVICE_URL=http://event-service:5000
       - SEAT_INVENTORY_URL=http://seat-inventory:5000
       - TICKET_SERVICE_URL=http://ticket-atomic:5000
+      - PAYMENT_SERVICE_URL=http://payment-service:5000
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5000
       - ORDER_SERVICE_URL=https://personal-uq3wxrah.outsystemscloud.com/OrderService/rest/Order
       - PURCHASE_DB_PATH=/data/purchase.db
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
+      - CHECKOUT_HOLD_TTL_SECONDS=600
       - FLASK_DEBUG=0
       - FLASK_USE_RELOADER=0
     volumes:
@@ -197,6 +201,8 @@ services:
       - event-service
       - seat-inventory
       - ticket-atomic
+      - payment-service
+      - notification-service
     networks:
       - ticketing-net
 
@@ -211,6 +217,10 @@ services:
       - PURCHASE_SERVICE_URL=http://purchase-composite:5000
       - SEAT_INVENTORY_URL=http://seat-inventory:5000
       - TICKET_SERVICE_URL=http://ticket-atomic:5000
+      - PAYMENT_SERVICE_URL=http://payment-service:5000
+      - EVENT_SERVICE_URL=http://event-service:5000
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5000
+      - CUSTOMER_SUPPORT_EMAIL=${CUSTOMER_SUPPORT_EMAIL:-support@concerthub.local}
       - FLASK_DEBUG=0
       - FLASK_USE_RELOADER=0
     depends_on:
@@ -218,6 +228,9 @@ services:
       - purchase-composite
       - seat-inventory
       - ticket-atomic
+      - payment-service
+      - notification-service
+      - event-service
     networks:
       - ticketing-net
 
@@ -246,6 +259,7 @@ services:
       - USER_SERVICE_URL=http://user-service:5000
       - SEAT_INVENTORY_URL=http://seat-inventory:5000
       - REFUND_SERVICE_URL=http://refund-composite:5000
+      - UI_BASE_URL=http://localhost:8080
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/%2F
       - NOTIFICATION_EXCHANGE=concert.events
       - EVENT_UPDATED_ROUTING_KEY=event.updated

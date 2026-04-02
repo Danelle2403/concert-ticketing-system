@@ -13,7 +13,10 @@ SendGrid-backed notification wrapper that consumes RabbitMQ fanout events and em
 ## Message behavior
 
 - `event.updated`: sends an update email with changed event details and refund-request guidance
-- `event.cancelled`: sends a cancellation email with cancellation reason and planned Stripe refund guidance
+- `event.cancelled`: sends a cancellation email with cancellation reason and automatic Stripe refund guidance
+- `purchase.confirmed`: sends a purchase confirmation email with receipt details
+- `refund.success`: sends a refund confirmation email to the fan
+- `refund.failure`: sends an alert email so the fan and manager can resolve a failed refund
 
 ## Endpoints
 
@@ -21,6 +24,9 @@ SendGrid-backed notification wrapper that consumes RabbitMQ fanout events and em
 - `POST /notifications/events`
 - `POST /notifications/event-updated`
 - `POST /notifications/event-cancelled`
+- `POST /notifications/purchase-confirmation`
+- `POST /notifications/refund-success`
+- `POST /notifications/refund-failure`
 
 ## Environment variables
 
@@ -35,7 +41,8 @@ SendGrid-backed notification wrapper that consumes RabbitMQ fanout events and em
 
 ## Run
 
-The service is intended to run through the repo root `docker-compose.yml` and listens on `http://localhost:5013`.
+This service is an internal dependency behind the composites and RabbitMQ consumer.
+The repo root stack exposes it on `http://localhost:5013` for health checks and debugging.
 
 ## Local tests
 

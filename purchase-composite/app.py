@@ -16,11 +16,18 @@ USER_SERVICE_URL = os.environ.get("USER_SERVICE_URL", "http://user-service:5000"
 EVENT_SERVICE_URL = os.environ.get("EVENT_SERVICE_URL", "http://event-service:5000")
 SEAT_INVENTORY_URL = os.environ.get("SEAT_INVENTORY_URL", "http://seat-inventory:5000")
 TICKET_SERVICE_URL = os.environ.get("TICKET_SERVICE_URL", "http://ticket-atomic:5000")
+PAYMENT_SERVICE_URL = os.environ.get("PAYMENT_SERVICE_URL", "http://payment-service:5000")
+NOTIFICATION_SERVICE_URL = os.environ.get(
+    "NOTIFICATION_SERVICE_URL", "http://notification-service:5000"
+)
 ORDER_SERVICE_URL = os.environ.get(
     "ORDER_SERVICE_URL",
     "https://personal-uq3wxrah.outsystemscloud.com/OrderService/rest/Order",
 ).rstrip("/")
 DB_PATH = os.environ.get("PURCHASE_DB_PATH", "/data/purchase.db")
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+CHECKOUT_HOLD_TTL_SECONDS = int(os.environ.get("CHECKOUT_HOLD_TTL_SECONDS", "600"))
+DEFAULT_CURRENCY = os.environ.get("DEFAULT_CURRENCY", "sgd")
 
 
 def env_flag(name, default=False):
@@ -271,6 +278,113 @@ def req_json(method, url, payload=None, timeout=8):
     return response.status_code, body
 
 
+def extract_data(body):
+    if isinstance(body, dict) and isinstance(body.get("data"), dict):
+        return body["data"]
+    return body
+
+
+def to_minor_units(amount):
+    return int(round(float(amount) * 100))
+
+
+def normalize_currency(value):
+    currency = str(value or "").strip().lower()
+    return currency or DEFAULT_CURRENCY
+
+
+def event_currency(event):
+    tiers = event_pricing_tiers(event)
+    for tier in tiers:
+        currency = normalize_currency(tier.get("currency"))
+        if currency:
+            return currency
+    return DEFAULT_CURRENCY
+
+
+def hold_single_seat(event_id, seat_category, ttl_seconds):
+    code, hold = req_json(
+        "POST",
+        f"{SEAT_INVENTORY_URL}/inventory/hold",
+        {
+            "eventId": event_id,
+            "seatCategory": seat_category,
+            "quantity": 1,
+            "ttlSeconds": ttl_seconds,
+        },
+    )
+    if code != 201:
+        raise RuntimeError(f"Seat hold failed: {hold}")
+    return hold
+
+
+def release_hold(hold_id, reason):
+    if not hold_id:
+        return None
+    return req_json(
+        "POST",
+        f"{SEAT_INVENTORY_URL}/inventory/release",
+        {
+            "holdId": hold_id,
+            "allowConfirmedRelease": True,
+            "reason": reason,
+        },
+    )
+
+
+def create_payment_intent(amount_minor, currency, description, receipt_email, metadata):
+    code, body = req_json(
+        "POST",
+        f"{PAYMENT_SERVICE_URL}/payments/intents",
+        {
+            "amount": amount_minor,
+            "currency": currency,
+            "description": description,
+            "receiptEmail": receipt_email,
+            "metadata": metadata,
+        },
+    )
+    if code != 201:
+        raise RuntimeError(f"Payment intent creation failed: {body}")
+    return extract_data(body)
+
+
+def fetch_payment_intent(payment_intent_id):
+    code, body = req_json("GET", f"{PAYMENT_SERVICE_URL}/payments/intents/{payment_intent_id}")
+    if code != 200:
+        raise RuntimeError(f"Payment intent lookup failed: {body}")
+    return extract_data(body)
+
+
+def refund_payment(payment_intent_id, amount_minor, reason, metadata):
+    code, body = req_json(
+        "POST",
+        f"{PAYMENT_SERVICE_URL}/refunds",
+        {
+            "paymentIntentId": payment_intent_id,
+            "amount": amount_minor,
+            "reason": reason,
+            "metadata": metadata,
+        },
+    )
+    if code != 201:
+        raise RuntimeError(f"Payment refund failed: {body}")
+    return extract_data(body)
+
+
+def send_purchase_confirmation_notification(payload):
+    try:
+        req_json(
+            "POST",
+            f"{NOTIFICATION_SERVICE_URL}/notifications/purchase-confirmation",
+            payload,
+            timeout=10,
+        )
+    except Exception:
+        return False
+    return True
+
+
 def issue_ticket(event_id):
     code, body = req_json("POST", f"{TICKET_SERVICE_URL}/tickets/issue", {"event_id": event_id})
     if code in (200, 201) and body.get("ticket_id"):
@@ -300,7 +414,13 @@ def ensure_sqlite_schema(conn):
             seatCategory TEXT NOT NULL,
             status TEXT NOT NULL,
             paymentChargeId TEXT,
+            paymentIntentId TEXT,
+            paymentStatus TEXT,
+            latestChargeId TEXT,
             amountPaid REAL,
+            currency TEXT,
+            buyerName TEXT,
+            buyerEmail TEXT,
             createdAt TEXT NOT NULL,
             updatedAt TEXT NOT NULL
         )
@@ -320,6 +440,34 @@ def ensure_sqlite_schema(conn):
             date TEXT,
             seatCategory TEXT,
             status TEXT NOT NULL,
+            amountPaid REAL,
+            currency TEXT,
+            paymentIntentId TEXT,
+            paymentChargeId TEXT,
+            refundId TEXT,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS checkout_sessions (
+            checkoutSessionId TEXT PRIMARY KEY,
+            purchaseId TEXT,
+            userId INTEGER NOT NULL,
+            eventId TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            seatCategory TEXT NOT NULL,
+            amountPaid REAL NOT NULL,
+            currency TEXT NOT NULL,
+            buyerName TEXT,
+            buyerEmail TEXT,
+            holdIds TEXT NOT NULL DEFAULT '[]',
+            paymentIntentId TEXT NOT NULL,
+            clientSecret TEXT NOT NULL,
+            status TEXT NOT NULL,
+            expiresAt TEXT NOT NULL,
             createdAt TEXT NOT NULL,
             updatedAt TEXT NOT NULL
         )
@@ -332,7 +480,13 @@ def ensure_sqlite_schema(conn):
             "orderIds": "TEXT NOT NULL DEFAULT '[]'",
             "ticketIds": "TEXT NOT NULL DEFAULT '[]'",
             "paymentChargeId": "TEXT",
+            "paymentIntentId": "TEXT",
+            "paymentStatus": "TEXT",
+            "latestChargeId": "TEXT",
             "amountPaid": "REAL",
+            "currency": "TEXT",
+            "buyerName": "TEXT",
+            "buyerEmail": "TEXT",
             "updatedAt": "TEXT NOT NULL DEFAULT ''",
         },
     )
@@ -341,6 +495,11 @@ def ensure_sqlite_schema(conn):
         "ticket_map",
         {
             "orderId": "INTEGER",
+            "amountPaid": "REAL",
+            "currency": "TEXT",
+            "paymentIntentId": "TEXT",
+            "paymentChargeId": "TEXT",
+            "refundId": "TEXT",
             "updatedAt": "TEXT NOT NULL DEFAULT ''",
         },
     )
@@ -552,6 +711,15 @@ def serialize_purchase_row(row):
     return payload
 
 
+def serialize_checkout_session_row(row):
+    payload = dict(row)
+    try:
+        payload["holdIds"] = json.loads(payload.get("holdIds") or "[]")
+    except json.JSONDecodeError:
+        payload["holdIds"] = []
+    return payload
+
+
 @app.route("/health", methods=["GET"])
 def health():
     checks = {}
@@ -559,12 +727,447 @@ def health():
         ("userService", f"{USER_SERVICE_URL}/health"),
         ("seatInventory", f"{SEAT_INVENTORY_URL}/health"),
         ("ticketAtomic", f"{TICKET_SERVICE_URL}/health"),
+        ("paymentService", f"{PAYMENT_SERVICE_URL}/health"),
     ):
         code, body = req_json("GET", url, timeout=5)
         checks[name] = {"ok": code == 200, "statusCode": code, "body": body}
 
     status_code = 200 if all(check["ok"] for check in checks.values()) else 503
     return jsonify({"status": "Purchase Composite is running", "checks": checks}), status_code
+
+
+@app.route("/purchase/config", methods=["GET"])
+def purchase_config():
+    return (
+        jsonify(
+            {
+                "stripeConfigured": bool(STRIPE_PUBLISHABLE_KEY),
+                "publishableKey": STRIPE_PUBLISHABLE_KEY or None,
+                "seatHoldTtlSeconds": CHECKOUT_HOLD_TTL_SECONDS,
+                "currency": DEFAULT_CURRENCY,
+            }
+        ),
+        200,
+    )
+
+
+@app.route("/purchase/checkout/session", methods=["POST"])
+def create_checkout_session():
+    data = request.get_json() or {}
+
+    user_id_raw = data.get("userId")
+    event_id = normalize_event_id(data.get("eventId"))
+    quantity = int(data.get("quantity", 1))
+    buyer_name = str(data.get("name") or "").strip()
+    buyer_email = str(data.get("email") or "").strip()
+
+    if not user_id_raw or not event_id:
+        return jsonify({"error": "userId and eventId are required"}), 400
+    if quantity <= 0:
+        return jsonify({"error": "quantity must be > 0"}), 400
+    if not buyer_name or not buyer_email:
+        return jsonify({"error": "name and email are required"}), 400
+
+    try:
+        user_id = normalize_user_id(user_id_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "userId must be an integer"}), 400
+
+    code, user = req_json("GET", f"{USER_SERVICE_URL}/user/{user_id}")
+    if code != 200:
+        return jsonify({"error": "User not found"}), 404
+
+    event = fetch_event(event_id)
+    if not event:
+        return jsonify({"error": "Event not found"}), 404
+    if event_status(event) == "CANCELLED":
+        return jsonify({"error": "Event is cancelled"}), 409
+
+    seat_category = derive_seat_category(event, data.get("seatCategory"))
+    amount_per_ticket = derive_amount_paid(event, seat_category)
+    currency = event_currency(event)
+    amount_minor = to_minor_units(amount_per_ticket * quantity)
+    checkout_session_id = str(uuid.uuid4())
+
+    created_holds = []
+    conn = None
+    try:
+        for _ in range(quantity):
+            created_holds.append(
+                hold_single_seat(event_id, seat_category, CHECKOUT_HOLD_TTL_SECONDS)
+            )
+
+        payment_intent = create_payment_intent(
+            amount_minor=amount_minor,
+            currency=currency,
+            description=f"Concert purchase for {event_title(event)}",
+            receipt_email=buyer_email or user.get("email"),
+            metadata={
+                "checkoutSessionId": checkout_session_id,
+                "eventId": order_style_id("con", event_id),
+                "seatCategory": order_seat_category(event, seat_category),
+                "quantity": quantity,
+                "userId": order_style_id("fan", user_id),
+            },
+        )
+
+        now = utc_now_iso()
+        expires_at = min(hold.get("expiresAt") for hold in created_holds)
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT OR REPLACE INTO checkout_sessions
+            (checkoutSessionId, purchaseId, userId, eventId, quantity, seatCategory, amountPaid, currency,
+             buyerName, buyerEmail, holdIds, paymentIntentId, clientSecret, status, expiresAt, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                checkout_session_id,
+                None,
+                user_id,
+                event_id,
+                quantity,
+                seat_category,
+                amount_per_ticket * quantity,
+                currency,
+                buyer_name,
+                buyer_email or user.get("email"),
+                json.dumps([hold["holdId"] for hold in created_holds]),
+                payment_intent["paymentIntentId"],
+                payment_intent["clientSecret"],
+                "PENDING_PAYMENT",
+                expires_at,
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+
+        return (
+            jsonify(
+                {
+                    "checkoutSessionId": checkout_session_id,
+                    "paymentIntentId": payment_intent["paymentIntentId"],
+                    "clientSecret": payment_intent["clientSecret"],
+                    "publishableKey": STRIPE_PUBLISHABLE_KEY or None,
+                    "currency": currency,
+                    "amount": amount_minor,
+                    "amountDisplay": round(amount_per_ticket * quantity, 2),
+                    "seatCategory": seat_category,
+                    "quantity": quantity,
+                    "holdExpiresAt": expires_at,
+                    "event": {
+                        "eventId": event_id,
+                        "title": event_title(event),
+                        "venue": event_venue_label(event),
+                        "date": event_date_label(event),
+                    },
+                }
+            ),
+            201,
+        )
+    except Exception as error:
+        for hold in created_holds:
+            release_hold(hold.get("holdId"), "CHECKOUT_SESSION_ABORTED")
+        return jsonify({"error": str(error)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/purchase/checkout/confirm", methods=["POST"])
+def confirm_checkout_session():
+    data = request.get_json() or {}
+    checkout_session_id = str(data.get("checkoutSessionId") or "").strip()
+    payment_intent_id = str(data.get("paymentIntentId") or "").strip()
+
+    if not checkout_session_id:
+        return jsonify({"error": "checkoutSessionId is required"}), 400
+
+    conn = None
+    created_rows = []
+    checkout_session = None
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM checkout_sessions WHERE checkoutSessionId = ?",
+            (checkout_session_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "Checkout session not found"}), 404
+
+        checkout_session = serialize_checkout_session_row(row)
+        if (
+            payment_intent_id
+            and checkout_session.get("paymentIntentId")
+            and payment_intent_id != checkout_session["paymentIntentId"]
+        ):
+            conn.close()
+            return jsonify({"error": "paymentIntentId does not match checkout session"}), 409
+
+        if checkout_session["status"] == "COMPLETED" and checkout_session.get("purchaseId"):
+            purchase_id = checkout_session["purchaseId"]
+            cur.execute("SELECT * FROM purchases WHERE purchaseId = ?", (purchase_id,))
+            purchase_row = cur.fetchone()
+            conn.close()
+            if purchase_row:
+                payload = serialize_purchase_row(purchase_row)
+                payload["orders"] = [
+                    fetch_external_order(order_id) for order_id in payload.get("orderIds", [])
+                ]
+                return jsonify(payload), 200
+            return jsonify({"error": "Completed purchase record is missing"}), 500
+
+        event_id = checkout_session["eventId"]
+        event = fetch_event(event_id)
+        if not event:
+            conn.close()
+            return jsonify({"error": "Event not found"}), 404
+
+        payment_intent = fetch_payment_intent(checkout_session["paymentIntentId"])
+        payment_status = str(payment_intent.get("status") or "").lower()
+        if payment_status != "succeeded":
+            conn.close()
+            return (
+                jsonify(
+                    {
+                        "error": "Payment has not succeeded yet",
+                        "paymentStatus": payment_intent.get("status"),
+                    }
+                ),
+                409,
+            )
+
+        latest_charge_id = (
+            payment_intent.get("latestChargeId")
+            or payment_intent.get("paymentIntentId")
+            or checkout_session["paymentIntentId"]
+        )
+        amount_per_ticket = float(checkout_session["amountPaid"]) / max(
+            int(checkout_session["quantity"]), 1
+        )
+        purchase_id = str(uuid.uuid4())
+        now = utc_now_iso()
+
+        for hold_id in checkout_session["holdIds"]:
+            code, confirm_payload = req_json(
+                "POST",
+                f"{SEAT_INVENTORY_URL}/inventory/confirm",
+                {"holdId": hold_id},
+            )
+            if code != 200:
+                raise RuntimeError(f"Seat confirm failed: {confirm_payload}")
+
+            ticket_id = issue_ticket(event_id)
+            code, _ = req_json(
+                "POST",
+                f"{USER_SERVICE_URL}/user/tickets/add",
+                {
+                    "userId": checkout_session["userId"],
+                    "ticketId": ticket_id,
+                    "eventId": event_id,
+                    "eventName": event_title(event),
+                    "venue": event_venue_label(event),
+                    "date": event_date_label(event),
+                    "status": "active",
+                },
+            )
+            if code not in (200, 201):
+                raise RuntimeError("User ticket write failed")
+
+            order_resp = create_external_order(
+                user_id=checkout_session["userId"],
+                ticket_id=ticket_id,
+                event_id=event_id,
+                event=event,
+                seat_category=checkout_session["seatCategory"],
+                payment_charge_id=latest_charge_id,
+                amount_paid=amount_per_ticket,
+            )
+
+            created_rows.append(
+                {
+                    "ticketId": ticket_id,
+                    "holdId": hold_id,
+                    "orderId": order_resp.get("order_id"),
+                    "status": "ACTIVE",
+                    "amountPaid": amount_per_ticket,
+                }
+            )
+
+        order_ids = [row["orderId"] for row in created_rows if row.get("orderId") is not None]
+        ticket_ids = [row["ticketId"] for row in created_rows]
+
+        cur.execute(
+            """
+            INSERT OR REPLACE INTO purchases
+            (purchaseId, orderIds, ticketIds, userId, eventId, quantity, seatCategory, status, paymentChargeId,
+             paymentIntentId, paymentStatus, latestChargeId, amountPaid, currency, buyerName, buyerEmail, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                purchase_id,
+                json.dumps(order_ids),
+                json.dumps(ticket_ids),
+                checkout_session["userId"],
+                event_id,
+                checkout_session["quantity"],
+                checkout_session["seatCategory"],
+                "SUCCESS",
+                latest_charge_id,
+                checkout_session["paymentIntentId"],
+                "SUCCEEDED",
+                latest_charge_id,
+                checkout_session["amountPaid"],
+                checkout_session["currency"],
+                checkout_session.get("buyerName"),
+                checkout_session.get("buyerEmail"),
+                now,
+                now,
+            ),
+        )
+
+        for row in created_rows:
+            cur.execute(
+                """
+                INSERT OR REPLACE INTO ticket_map
+                (ticketId, purchaseId, orderId, holdId, userId, eventId, eventName, venue, date, seatCategory,
+                 status, amountPaid, currency, paymentIntentId, paymentChargeId, refundId, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["ticketId"],
+                    purchase_id,
+                    row["orderId"],
+                    row["holdId"],
+                    checkout_session["userId"],
+                    event_id,
+                    event_title(event),
+                    event_venue_label(event),
+                    event_date_label(event),
+                    checkout_session["seatCategory"],
+                    row["status"],
+                    row["amountPaid"],
+                    checkout_session["currency"],
+                    checkout_session["paymentIntentId"],
+                    latest_charge_id,
+                    None,
+                    now,
+                    now,
+                ),
+            )
+
+        cur.execute(
+            """
+            UPDATE checkout_sessions
+            SET purchaseId = ?, status = 'COMPLETED', updatedAt = ?
+            WHERE checkoutSessionId = ?
+            """,
+            (purchase_id, now, checkout_session_id),
+        )
+
+        conn.commit()
+        conn.close()
+
+        send_purchase_confirmation_notification(
+            {
+                "purchaseId": purchase_id,
+                "paymentIntentId": checkout_session["paymentIntentId"],
+                "paymentChargeId": latest_charge_id,
+                "amountPaid": checkout_session["amountPaid"],
+                "currency": checkout_session["currency"],
+                "buyerName": checkout_session.get("buyerName"),
+                "buyerEmail": checkout_session.get("buyerEmail"),
+                "event": {
+                    "eventId": event_id,
+                    "title": event_title(event),
+                    "venue": event_venue_label(event),
+                    "date": event_date_label(event),
+                },
+                "ticketIds": ticket_ids,
+                "orderIds": order_ids,
+            }
+        )
+
+        return (
+            jsonify(
+                {
+                    "purchaseId": purchase_id,
+                    "orderIds": order_ids,
+                    "status": "SUCCESS",
+                    "paymentIntentId": checkout_session["paymentIntentId"],
+                    "paymentChargeId": latest_charge_id,
+                    "tickets": ticket_ids,
+                }
+            ),
+            201,
+        )
+    except Exception as error:
+        if conn:
+            conn.rollback()
+            conn.close()
+
+        refund_data = None
+        if checkout_session:
+            for hold_id in checkout_session.get("holdIds", []):
+                release_hold(hold_id, "CHECKOUT_CONFIRM_FAILED")
+
+            for row in created_rows:
+                req_json(
+                    "POST",
+                    f"{USER_SERVICE_URL}/user/ticket/{row['ticketId']}/status",
+                    {"status": "cancelled"},
+                )
+                if row.get("orderId") is not None:
+                    update_external_order_status(row["orderId"], "CANCELLED")
+                invalidate_ticket(row["ticketId"])
+
+            try:
+                refund_data = refund_payment(
+                    checkout_session["paymentIntentId"],
+                    to_minor_units(checkout_session["amountPaid"]),
+                    "requested_by_customer",
+                    {
+                        "checkoutSessionId": checkout_session["checkoutSessionId"],
+                        "eventId": order_style_id("con", checkout_session["eventId"]),
+                    },
+                )
+            except Exception:
+                refund_data = None
+
+            if refund_data:
+                for row in created_rows:
+                    if row.get("orderId") is not None:
+                        update_external_order_status(row["orderId"], "REFUNDED")
+
+            repair_conn = get_db()
+            try:
+                repair_cur = repair_conn.cursor()
+                repair_cur.execute(
+                    """
+                    UPDATE checkout_sessions
+                    SET status = ?, updatedAt = ?
+                    WHERE checkoutSessionId = ?
+                    """,
+                    (
+                        "REFUNDED" if refund_data else "FAILED",
+                        utc_now_iso(),
+                        checkout_session_id,
+                    ),
+                )
+                repair_conn.commit()
+            finally:
+                repair_conn.close()
+
+        response = {"error": str(error)}
+        if refund_data:
+            response["refund"] = refund_data
+        return jsonify(response), 500
 
 
 @app.route("/purchase/checkout", methods=["POST"])
@@ -809,6 +1412,7 @@ def ticket_update_status(ticketId):
     ticketId = normalize_ticket_id(ticketId)
     data = request.get_json() or {}
     status = str(data.get("status") or "").strip().upper()
+    refund_id = data.get("refundId")
     if not status:
         return jsonify({"error": "status is required"}), 400
 
@@ -822,8 +1426,8 @@ def ticket_update_status(ticketId):
 
     now = utc_now_iso()
     cur.execute(
-        "UPDATE ticket_map SET status = ?, updatedAt = ? WHERE ticketId = ?",
-        (status, now, ticketId),
+        "UPDATE ticket_map SET status = ?, refundId = COALESCE(?, refundId), updatedAt = ? WHERE ticketId = ?",
+        (status, refund_id, now, ticketId),
     )
     cur.execute("SELECT * FROM ticket_map WHERE ticketId = ?", (ticketId,))
     row = cur.fetchone()
@@ -833,9 +1437,15 @@ def ticket_update_status(ticketId):
     if purchase_row:
         cur.execute("SELECT * FROM ticket_map WHERE purchaseId = ?", (row["purchaseId"],))
         purchase_ticket_rows = cur.fetchall()
+        purchase_status_value = normalize_purchase_status(purchase_ticket_rows)
+        payment_status = purchase_row["paymentStatus"]
+        if purchase_status_value == "REFUNDED":
+            payment_status = "REFUNDED"
+        elif purchase_status_value == "CANCELLED":
+            payment_status = "CANCELLED"
         cur.execute(
-            "UPDATE purchases SET status = ?, updatedAt = ? WHERE purchaseId = ?",
-            (normalize_purchase_status(purchase_ticket_rows), now, row["purchaseId"]),
+            "UPDATE purchases SET status = ?, paymentStatus = ?, updatedAt = ? WHERE purchaseId = ?",
+            (purchase_status_value, payment_status, now, row["purchaseId"]),
         )
 
     conn.commit()

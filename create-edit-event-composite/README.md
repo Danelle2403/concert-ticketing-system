@@ -6,7 +6,7 @@ Manager-only Flask orchestration service for creating, editing, and cancelling e
 
 - validates the acting user through User Service
 - creates or edits event metadata through Event Service
-- cancels events through Event Service and returns refund-flow metadata for downstream handling
+- cancels events through Event Service and triggers refund-composite for event-wide Stripe refunds
 - relies on `managerId` stored in Event Service for ownership checks and manager event listing
 - bootstraps Seat Inventory with the Event Service UUID by aggregating `seatSections[].capacity` per pricing tier
 - validates existing Seat Inventory totals before allowing seat-configuration edits
@@ -49,7 +49,8 @@ Environment variables used by this service:
 - `EVENT_UPDATED_ROUTING_KEY`
 - `EVENT_CANCELLED_ROUTING_KEY`
 
-The composite listens on `http://localhost:5012`.
+The browser should reach this service through Kong at `http://localhost:8000/events` or `http://localhost:8000/manager/events`.
+The direct container port `http://localhost:5012` is for internal calls, health checks, and debugging.
 
 ## Seed dummy data
 
@@ -75,6 +76,6 @@ cd create-edit-event-composite
 ## Notification behavior
 
 - Edit requests publish `event.updated` only when tracked event fields actually change
-- Cancel requests publish `event.cancelled` with refund guidance indicating Stripe is the planned provider
-- Cancel responses include a planned `refund-composite` endpoint for later orchestration work
+- Cancel requests publish `event.cancelled` with automatic Stripe refund guidance
+- Cancel responses include the actual refund batch trigger result from `refund-composite`
 - If RabbitMQ publish fails, the event change still succeeds and the API response includes a warning instead of rolling back

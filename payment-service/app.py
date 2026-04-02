@@ -78,6 +78,16 @@ def create_app(test_config=None):
             }
         )
 
+    @app.route("/payments/config", methods=["GET"])
+    def get_payment_config():
+        return build_success(
+            {
+                "stripeConfigured": bool(app.config["STRIPE_SECRET_KEY"]),
+                "publishableKeyConfigured": bool(app.config["STRIPE_PUBLISHABLE_KEY"]),
+                "publishableKey": app.config["STRIPE_PUBLISHABLE_KEY"] or None,
+            }
+        )
+
     @app.route("/payments/intents", methods=["POST"])
     def create_payment_intent():
         stripe_error = require_stripe()
@@ -106,7 +116,10 @@ def create_app(test_config=None):
             intent = stripe.PaymentIntent.create(
                 amount=amount,
                 currency=currency,
-                automatic_payment_methods={"enabled": True},
+                automatic_payment_methods={
+                    "enabled": True,
+                    "allow_redirects": "never",
+                },
                 description=payload.get("description"),
                 metadata=metadata,
                 receipt_email=payload.get("receiptEmail"),

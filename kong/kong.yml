@@ -8,7 +8,6 @@ services:
     routes:
       - name: user-routes
         paths:
-          - /health
           - /user
           - /users
         strip_path: false
@@ -21,14 +20,6 @@ services:
           - /events
         methods:
           - GET
-        strip_path: false
-
-  - name: ticket-service
-    url: http://ticket-atomic:5000
-    routes:
-      - name: ticket-routes
-        paths:
-          - /tickets
         strip_path: false
 
   - name: purchase-composite
@@ -52,8 +43,10 @@ services:
     routes:
       - name: edit-event-routes
         paths:
+          - /manager/events
           - /events
         methods:
+          - GET
           - PUT
           - POST
           - OPTIONS

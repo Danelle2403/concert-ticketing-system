@@ -9,18 +9,19 @@ import app as payment_app
 def test_create_payment_intent_success(monkeypatch):
     flask_app = payment_app.create_app({"TESTING": True, "STRIPE_SECRET_KEY": "sk_test_123"})
     client = flask_app.test_client()
+    captured = {}
 
-    monkeypatch.setattr(
-        payment_app.stripe.PaymentIntent,
-        "create",
-        lambda **kwargs: {
+    def _create_intent(**kwargs):
+        captured["kwargs"] = kwargs
+        return {
             "id": "pi_123",
             "client_secret": "pi_123_secret_abc",
             "status": "requires_payment_method",
             "amount": kwargs["amount"],
             "currency": kwargs["currency"],
-        },
-    )
+        }
+
+    monkeypatch.setattr(payment_app.stripe.PaymentIntent, "create", _create_intent)
 
     response = client.post(
         "/payments/intents",
@@ -38,6 +39,10 @@ def test_create_payment_intent_success(monkeypatch):
     assert payload["data"]["paymentIntentId"] == "pi_123"
     assert payload["data"]["amount"] == 12800
     assert payload["data"]["currency"] == "sgd"
+    assert captured["kwargs"]["automatic_payment_methods"] == {
+        "enabled": True,
+        "allow_redirects": "never",
+    }
 
 
 def test_create_refund_via_payment_intent_success(monkeypatch):

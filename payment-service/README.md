@@ -4,14 +4,16 @@ Standalone Stripe wrapper for payment intent and refund operations.
 
 ## What it does
 
-- creates Stripe PaymentIntents for future purchase integration
+- creates Stripe PaymentIntents for the live purchase UI
 - retrieves Stripe PaymentIntent status/details
 - creates Stripe refunds from either a `chargeId` or a `paymentIntentId`
+- creates PaymentIntents with redirect-based payment methods disabled so the embedded checkout flow can stay in-app
 - returns a clear `STRIPE_NOT_CONFIGURED` error when Stripe keys are missing
 
 ## Endpoints
 
 - `GET /health`
+- `GET /payments/config`
 - `POST /payments/intents`
 - `GET /payments/intents/:paymentIntentId`
 - `POST /refunds`
@@ -23,7 +25,8 @@ Standalone Stripe wrapper for payment intent and refund operations.
 
 ## Run
 
-The service is wired into the repo root `docker-compose.yml` and listens on `http://localhost:5014`.
+This service is an internal dependency behind the purchase and refund composites.
+The repo root stack exposes it on `http://localhost:5014` for health checks and debugging.
 
 ## Example requests
 

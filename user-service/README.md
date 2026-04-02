@@ -37,7 +37,8 @@ Atomic Flask service for user records, user ticket records, and manager-owned ev
 
 ## Run
 
-The repo root stack exposes this service on `http://localhost:5001`.
+Browser traffic should go through Kong at `http://localhost:8000/user`.
+The direct port `http://localhost:5001` is for internal calls, health checks, and debugging.
 
 ## Local tests
 

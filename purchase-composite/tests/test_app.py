@@ -87,3 +87,90 @@ def test_ticket_status_update_pushes_external_order_status(client, monkeypatch):
         assert row["status"] == "REFUNDED"
     finally:
         purchase_db.close()
+
+
+def test_checkout_session_and_confirm_use_stripe_flow(client, monkeypatch):
+    captured_order_payload = {}
+    sent_notifications = []
+
+    def fake_req_json(method, url, payload=None, timeout=8):
+        if method == "GET" and url.endswith("/user/2"):
+            return 200, {"id": 2, "userId": 2, "email": "fan2@example.com"}
+        if method == "GET" and url.endswith("/events/1"):
+            return 404, {"error": "not found"}
+        if method == "POST" and url.endswith("/inventory/hold"):
+            return 201, {"holdId": f"hold-{len(sent_notifications) + 1}", "expiresAt": "2026-04-03T10:00:00Z"}
+        if method == "POST" and url.endswith("/payments/intents"):
+            return 201, {
+                "data": {
+                    "paymentIntentId": "pi_123",
+                    "clientSecret": "pi_123_secret",
+                    "status": "requires_payment_method",
+                    "amount": 8000,
+                    "currency": "sgd",
+                }
+            }
+        if method == "GET" and url.endswith("/payments/intents/pi_123"):
+            return 200, {
+                "data": {
+                    "paymentIntentId": "pi_123",
+                    "status": "succeeded",
+                    "latestChargeId": "ch_123",
+                }
+            }
+        if method == "POST" and url.endswith("/inventory/confirm"):
+            return 200, {"status": "CONFIRMED"}
+        if method == "POST" and url.endswith("/user/tickets/add"):
+            return 201, {"ticketId": payload["ticketId"]}
+        if method == "POST" and url.endswith("/order/"):
+            captured_order_payload.update(payload)
+            return 200, {"order_id": 77, **payload, "Status": "CONFIRMED"}
+        raise AssertionError(f"Unexpected request: {method} {url} payload={payload} timeout={timeout}")
+
+    monkeypatch.setattr(purchase_app, "req_json", fake_req_json)
+    monkeypatch.setattr(purchase_app, "issue_ticket", lambda _event_id: "2")
+    monkeypatch.setattr(
+        purchase_app,
+        "send_purchase_confirmation_notification",
+        lambda payload: sent_notifications.append(payload) or True,
+    )
+
+    session_response = client.post(
+        "/purchase/checkout/session",
+        json={
+            "userId": "fan-002",
+            "eventId": "con-001",
+            "quantity": 1,
+            "name": "Noah Fan",
+            "email": "fan2@example.com",
+            "seatCategory": "Standard",
+        },
+    )
+
+    assert session_response.status_code == 201
+    session_payload = session_response.get_json()
+    assert session_payload["paymentIntentId"] == "pi_123"
+    assert session_payload["clientSecret"] == "pi_123_secret"
+
+    confirm_response = client.post(
+        "/purchase/checkout/confirm",
+        json={
+            "checkoutSessionId": session_payload["checkoutSessionId"],
+            "paymentIntentId": "pi_123",
+        },
+    )
+
+    assert confirm_response.status_code == 201
+    confirm_payload = confirm_response.get_json()
+    assert confirm_payload["orderIds"] == [77]
+    assert confirm_payload["tickets"] == ["2"]
+    assert confirm_payload["paymentChargeId"] == "ch_123"
+    assert captured_order_payload == {
+        "FanId": "fan-002",
+        "TicketId": "tkt-002",
+        "ConcertId": "con-001",
+        "PaymentChargeId": "ch_123",
+        "SeatCategory": "Standard",
+        "AmountPaid": 80.0,
+    }
+    assert sent_notifications[0]["purchaseId"] == confirm_payload["purchaseId"]

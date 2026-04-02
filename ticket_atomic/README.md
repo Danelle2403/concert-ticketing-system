@@ -36,6 +36,7 @@ The repo root `docker-compose.yml` also includes:
 - `ticket-atomic-db` as its local Postgres dependency
 
 The purchase flow is wired to use this local service in the root stack, and refund/cancel flows propagate ticket invalidation through the purchase wrapper.
+This service is internal to the composites and is not intended to be called directly from the browser.
 
 ---
 

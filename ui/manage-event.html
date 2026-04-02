@@ -455,6 +455,8 @@
             events.forEach((event) => {
                 const card = document.createElement("article");
                 card.className = "event-manage-card manager-event-card";
+                const eventIdArg = JSON.stringify(event.id);
+                const eventTitleArg = JSON.stringify(event.title);
                 card.innerHTML = `
                     <div class="event-info">
                         <div class="event-card-topline">
@@ -469,7 +471,8 @@
                         </p>
                     </div>
                     <div class="ticket-actions">
-                        <button class="btn-primary" onclick="openEditModal('${event.id}')">Edit Details</button>
+                        <button class="btn-primary" onclick="openEditModal(${eventIdArg})">Edit Details</button>
+                        <button class="btn-danger" onclick="confirmCancelEvent(${eventIdArg}, ${eventTitleArg})">Cancel Event</button>
                         <button class="btn-secondary" onclick="window.location.href='index.html'">Browse</button>
                     </div>
                 `;
@@ -731,6 +734,31 @@
             } catch (err) {
                 document.getElementById("edit-loading").classList.add("hidden");
                 showMessage("edit-error", err.message || "Update failed.");
+            }
+        }
+
+        async function confirmCancelEvent(eventId, eventTitle) {
+            const reason = window.prompt(`Why are you cancelling "${eventTitle}"?`, "Logistical issues");
+            if (reason === null) {
+                return;
+            }
+
+            try {
+                const response = await cancelEvent(eventId, {
+                    managerId,
+                    reason: reason.trim() || "No reason provided"
+                });
+
+                const refundFlow = response?.data?.integration?.refundFlow;
+                const summary = refundFlow?.summary;
+                const suffix = summary
+                    ? ` Refunds processed: ${summary.successful}/${summary.processed}.`
+                    : "";
+
+                alert(`Cancelled "${eventTitle}".${suffix}`);
+                await loadManagedEvents();
+            } catch (error) {
+                alert(error.message || "Unable to cancel the event.");
             }
         }
 
