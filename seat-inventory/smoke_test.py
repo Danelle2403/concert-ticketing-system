@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 BASE = "http://localhost:5004"
 
 
-class TestFail(Exception):
+class SmokeFail(Exception):
     pass
 
 
@@ -31,10 +31,10 @@ def req(method, path, body=None):
 
 def assert_true(condition, message):
     if not condition:
-        raise TestFail(message)
+        raise SmokeFail(message)
 
 
-def test_all():
+def run_all():
     code, payload = req("GET", "/health")
     assert_true(code == 200 and payload.get("status"), f"health failed: {code} {payload}")
 
@@ -155,6 +155,6 @@ def test_all():
 
 
 if __name__ == "__main__":
-    summary = test_all()
+    summary = run_all()
     print("ALL_TESTS_PASSED")
     print(json.dumps(summary, indent=2))

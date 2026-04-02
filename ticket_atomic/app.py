@@ -7,6 +7,7 @@ import psycopg2.extras
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
+_db_initialized = False
 
 # ---------------------------------------------------------------------------
 # Database connection
@@ -25,6 +26,7 @@ def init_db():
     """Create the tickets table if it does not exist yet."""
     conn = get_db()
     cur = conn.cursor()
+    cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS tickets (
             ticket_id   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -44,6 +46,14 @@ def init_db():
     conn.commit()
     cur.close()
     conn.close()
+
+
+def ensure_db_initialized():
+    global _db_initialized
+    if _db_initialized:
+        return
+    init_db()
+    _db_initialized = True
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +84,7 @@ def ticket_to_dict(row):
 def health():
     """Simple liveness probe — also acts as Supabase keep-alive ping."""
     try:
+        ensure_db_initialized()
         conn = get_db()
         conn.close()
         return jsonify({"status": "ok"}), 200
@@ -103,6 +114,7 @@ def issue_ticket():
     seat_row     = data.get("seat_row")
     seat_number  = data.get("seat_number")
 
+    ensure_db_initialized()
     conn = get_db()
     cur  = conn.cursor()
     cur.execute(
@@ -130,6 +142,7 @@ def get_ticket(ticket_id):
     except ValueError:
         return jsonify({"error": "Invalid ticket_id format"}), 400
 
+    ensure_db_initialized()
     conn = get_db()
     cur  = conn.cursor()
     cur.execute("SELECT * FROM tickets WHERE ticket_id = %s", (ticket_id,))
@@ -147,6 +160,7 @@ def get_ticket(ticket_id):
 @app.route("/tickets/event/<event_id>", methods=["GET"])
 def get_tickets_by_event(event_id):
     """Return all tickets for a given event_id."""
+    ensure_db_initialized()
     conn = get_db()
     cur  = conn.cursor()
     cur.execute(
@@ -172,6 +186,7 @@ def invalidate_ticket(ticket_id):
     except ValueError:
         return jsonify({"error": "Invalid ticket_id format"}), 400
 
+    ensure_db_initialized()
     conn = get_db()
     cur  = conn.cursor()
 
@@ -212,5 +227,5 @@ def invalidate_ticket(ticket_id):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    init_db()
+    ensure_db_initialized()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)

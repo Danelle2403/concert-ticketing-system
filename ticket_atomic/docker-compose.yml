@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   ticket-service:
     build: .
@@ -7,9 +5,11 @@ services:
     ports:
       - "5000:5000"
     environment:
-      # Paste your Supabase connection string here, or put it in a .env file
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: postgresql://ticket_user:ticket_password@ticket-db:5432/ticket_atomic_db
       PORT: 5000
+    depends_on:
+      ticket-db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -17,3 +17,21 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  ticket-db:
+    image: postgres:16-alpine
+    container_name: ticket-db
+    environment:
+      POSTGRES_USER: ticket_user
+      POSTGRES_PASSWORD: ticket_password
+      POSTGRES_DB: ticket_atomic_db
+    volumes:
+      - ticket-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticket_user -d ticket_atomic_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ticket-db-data:

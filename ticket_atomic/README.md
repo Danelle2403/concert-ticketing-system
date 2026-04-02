@@ -1,20 +1,23 @@
 # 🎟️ Ticket Microservice
 
-Atomic Flask microservice for ticket issuance and validation, backed by Supabase (Postgres).
+Atomic Flask microservice for ticket issuance and validation, backed by PostgreSQL.
 
 ## Quick Start
 
-### 1. Set up Supabase
+### 1. Set up PostgreSQL
 
-1. Create a project at [supabase.com](https://supabase.com)
-2. Go to **SQL Editor** → paste the contents of `init.sql` → **Run**
-3. Go to **Project Settings → Database → Connection string → URI** and copy it
+You have two options:
+
+1. Use the included standalone `docker-compose.yml`, which starts both the API and a local PostgreSQL database.
+2. Point `DATABASE_URL` at any existing PostgreSQL instance.
+
+If you want to precreate the schema manually, paste the contents of `init.sql` into your SQL tool first.
 
 ### 2. Configure environment
 
 ```bash
 cp .env.example .env
-# Edit .env and paste your DATABASE_URL
+# Edit .env only if you want to override the default local Docker database URL
 ```
 
 ### 3. Run with Docker Compose
@@ -23,7 +26,16 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The API is now live at `http://localhost:5000`.
+The standalone service is now live at `http://localhost:5000`.
+
+### Root stack integration
+
+The repo root `docker-compose.yml` also includes:
+
+- `ticket-atomic` on `http://localhost:5002`
+- `ticket-atomic-db` as its local Postgres dependency
+
+The purchase flow is wired to use this local service in the root stack, and refund/cancel flows propagate ticket invalidation through the purchase wrapper.
 
 ---
 
@@ -90,28 +102,6 @@ Invalidate a ticket (one-way, irreversible).
 
 ### `GET /health`
 Liveness probe — also acts as a Supabase keep-alive ping.
-
----
-
-## Keeping Supabase Free Tier Alive
-
-Supabase pauses free projects after **7 days of inactivity**.  
-If you have GitHub Actions, add this workflow to ping `/health` twice a week:
-
-```yaml
-# .github/workflows/keepalive.yml
-name: Supabase Keep-Alive
-on:
-  schedule:
-    - cron: '0 0 * * 0,4'   # Every Sunday and Thursday at midnight UTC
-jobs:
-  ping:
-    runs-on: ubuntu-latest
-    steps:
-      - run: curl -f ${{ secrets.API_URL }}/health
-```
-
-Add `API_URL` (e.g. `https://your-deployed-service.com`) as a GitHub Actions secret.
 
 ---
 

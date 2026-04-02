@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import os
+import re
 import time
 import uuid
 
@@ -12,15 +13,96 @@ CORS(app)
 
 DEFAULT_HOLD_TTL_SECONDS = int(os.environ.get("DEFAULT_HOLD_TTL_SECONDS", "300"))
 MAX_HOLD_TTL_SECONDS = int(os.environ.get("MAX_HOLD_TTL_SECONDS", "1800"))
+DB_CONNECT_RETRIES = int(os.environ.get("DB_CONNECT_RETRIES", "15"))
+DB_CONNECT_RETRY_DELAY_SECONDS = float(os.environ.get("DB_CONNECT_RETRY_DELAY_SECONDS", "1"))
+DB_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5"))
+ORDER_ALIGNED_DEMO_INVENTORY = [
+    {"eventId": "1", "seatCategory": "VIP", "totalSeats": 40, "availableSeats": 40},
+    {"eventId": "1", "seatCategory": "STANDARD", "totalSeats": 150, "availableSeats": 149},
+    {"eventId": "2", "seatCategory": "VIP", "totalSeats": 60, "availableSeats": 59},
+    {"eventId": "789", "seatCategory": "VIP", "totalSeats": 80, "availableSeats": 80},
+]
+ORDER_ALIGNED_DEMO_HOLDS = [
+    {
+        "holdId": "11111111-1111-1111-1111-111111111111",
+        "eventId": "789",
+        "seatCategory": "VIP",
+        "quantity": 1,
+        "status": "RELEASED",
+        "expiresAt": "2026-03-27 05:47:46",
+        "confirmedAt": "2026-03-27 05:42:46",
+        "releasedAt": "2026-03-27 21:25:49",
+        "releaseReason": "REFUND",
+        "createdAt": "2026-03-27 05:42:46",
+        "updatedAt": "2026-03-27 21:25:49",
+    },
+    {
+        "holdId": "22222222-2222-2222-2222-222222222222",
+        "eventId": "1",
+        "seatCategory": "VIP",
+        "quantity": 1,
+        "status": "RELEASED",
+        "expiresAt": "2026-03-27 21:20:59",
+        "confirmedAt": "2026-03-27 21:15:59",
+        "releasedAt": "2026-03-27 21:26:14",
+        "releaseReason": "ORDER_CANCELLED",
+        "createdAt": "2026-03-27 21:15:59",
+        "updatedAt": "2026-03-27 21:26:14",
+    },
+    {
+        "holdId": "33333333-3333-3333-3333-333333333333",
+        "eventId": "1",
+        "seatCategory": "STANDARD",
+        "quantity": 1,
+        "status": "CONFIRMED",
+        "expiresAt": "2026-12-31 23:59:59",
+        "confirmedAt": "2026-03-27 21:16:23",
+        "releasedAt": None,
+        "releaseReason": None,
+        "createdAt": "2026-03-27 21:16:23",
+        "updatedAt": "2026-03-27 21:16:23",
+    },
+    {
+        "holdId": "44444444-4444-4444-4444-444444444444",
+        "eventId": "2",
+        "seatCategory": "VIP",
+        "quantity": 1,
+        "status": "CONFIRMED",
+        "expiresAt": "2026-12-31 23:59:59",
+        "confirmedAt": "2026-03-27 21:16:49",
+        "releasedAt": None,
+        "releaseReason": None,
+        "createdAt": "2026-03-27 21:16:49",
+        "updatedAt": "2026-03-27 21:16:49",
+    },
+]
 
 
 def get_db():
-    return mysql.connector.connect(
-        host=os.environ.get("DB_HOST", "localhost"),
-        user=os.environ.get("DB_USER", "root"),
-        password=os.environ.get("DB_PASSWORD", "root"),
-        database=os.environ.get("DB_NAME", "seat_inventory_db"),
-    )
+    last_error = None
+    for attempt in range(DB_CONNECT_RETRIES):
+        try:
+            return mysql.connector.connect(
+                host=os.environ.get("DB_HOST", "localhost"),
+                user=os.environ.get("DB_USER", "root"),
+                password=os.environ.get("DB_PASSWORD", "root"),
+                database=os.environ.get("DB_NAME", "seat_inventory_db"),
+                connection_timeout=DB_CONNECT_TIMEOUT_SECONDS,
+            )
+        except mysql.connector.Error as error:
+            last_error = error
+            if attempt == DB_CONNECT_RETRIES - 1:
+                break
+            time.sleep(DB_CONNECT_RETRY_DELAY_SECONDS)
+
+    raise last_error
+
+
+def env_flag(name, default=False):
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def release_expired_holds(cursor, event_id=None, seat_category=None, hold_id=None):
@@ -95,9 +177,112 @@ def parse_non_negative_int(value, field_name):
     return parsed
 
 
+def normalize_prefixed_event_id(value):
+    if value is None:
+        return value
+
+    text = str(value).strip()
+    match = re.fullmatch(r"con-(\d+)", text, flags=re.IGNORECASE)
+    if match:
+        return str(int(match.group(1)))
+    return text
+
+
+def normalize_seat_category(value):
+    if value is None:
+        return value
+    return str(value).strip().upper()
+
+
+def seed_order_aligned_demo_inventory():
+    db = None
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        db.start_transaction()
+
+        for row in ORDER_ALIGNED_DEMO_INVENTORY:
+            cursor.execute(
+                """
+                INSERT INTO seat_inventory
+                (eventId, seatCategory, totalSeats, availableSeats, createdAt, updatedAt)
+                VALUES (%s, %s, %s, %s, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+                ON DUPLICATE KEY UPDATE
+                    totalSeats = VALUES(totalSeats),
+                    availableSeats = VALUES(availableSeats),
+                    updatedAt = UTC_TIMESTAMP()
+                """,
+                (
+                    row["eventId"],
+                    row["seatCategory"],
+                    row["totalSeats"],
+                    row["availableSeats"],
+                ),
+            )
+
+        for hold in ORDER_ALIGNED_DEMO_HOLDS:
+            cursor.execute(
+                """
+                INSERT INTO seat_holds
+                (holdId, eventId, seatCategory, quantity, status, expiresAt, confirmedAt, releasedAt, releaseReason, createdAt, updatedAt)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    eventId = VALUES(eventId),
+                    seatCategory = VALUES(seatCategory),
+                    quantity = VALUES(quantity),
+                    status = VALUES(status),
+                    expiresAt = VALUES(expiresAt),
+                    confirmedAt = VALUES(confirmedAt),
+                    releasedAt = VALUES(releasedAt),
+                    releaseReason = VALUES(releaseReason),
+                    updatedAt = VALUES(updatedAt)
+                """,
+                (
+                    hold["holdId"],
+                    hold["eventId"],
+                    hold["seatCategory"],
+                    hold["quantity"],
+                    hold["status"],
+                    hold["expiresAt"],
+                    hold["confirmedAt"],
+                    hold["releasedAt"],
+                    hold["releaseReason"],
+                    hold["createdAt"],
+                    hold["updatedAt"],
+                ),
+            )
+
+        db.commit()
+        return {"status": "seeded", "inventoryRows": len(ORDER_ALIGNED_DEMO_INVENTORY), "holdRows": len(ORDER_ALIGNED_DEMO_HOLDS)}, 200
+    except Exception as e:
+        if db:
+            db.rollback()
+        return {"error": str(e)}, 500
+    finally:
+        if db:
+            db.close()
+
+
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "Seat Inventory Service is running"}), 200
+    db = None
+    try:
+        db = get_db()
+        return jsonify({"status": "Seat Inventory Service is running", "database": "ok"}), 200
+    except Exception as error:
+        return (
+            jsonify(
+                {
+                    "status": "Seat Inventory Service is running",
+                    "database": "error",
+                    "error": str(error),
+                }
+            ),
+            503,
+        )
+    finally:
+        if db:
+            db.close()
 
 
 @app.route("/inventory", methods=["GET"])
@@ -132,6 +317,7 @@ def get_all_inventory():
 def get_inventory_by_event(event_id):
     db = None
     try:
+        event_id = normalize_prefixed_event_id(event_id)
         db = get_db()
         cursor = db.cursor(dictionary=True)
         db.start_transaction()
@@ -173,6 +359,8 @@ def get_inventory_by_category(event_id, seat_category):
 
     db = None
     try:
+        event_id = normalize_prefixed_event_id(event_id)
+        seat_category = normalize_seat_category(seat_category)
         db = get_db()
         cursor = db.cursor(dictionary=True)
         db.start_transaction()
@@ -208,7 +396,8 @@ def get_inventory_by_category(event_id, seat_category):
 @app.route("/inventory/admin/create", methods=["POST"])
 def create_inventory_for_event():
     data = request.get_json(silent=True) or {}
-    event_id = str(data.get("eventId", "")).strip()
+    event_id = normalize_prefixed_event_id(data.get("eventId"))
+    event_id = str(event_id or "").strip()
     seat_categories = data.get("seatCategories")
 
     if not event_id:
@@ -332,12 +521,18 @@ def create_inventory_for_event():
             db.close()
 
 
+@app.route("/inventory/admin/seed-order-demo", methods=["POST"])
+def seed_order_demo_inventory():
+    payload, status = seed_order_aligned_demo_inventory()
+    return jsonify(payload), status
+
+
 @app.route("/inventory/hold", methods=["POST"])
 def hold_seats():
     data = request.get_json(silent=True) or {}
 
-    event_id = data.get("eventId")
-    seat_category = data.get("seatCategory")
+    event_id = normalize_prefixed_event_id(data.get("eventId"))
+    seat_category = normalize_seat_category(data.get("seatCategory"))
 
     if not event_id or not seat_category:
         return jsonify({"error": "eventId and seatCategory are required"}), 400
@@ -634,4 +829,9 @@ def get_hold(hold_id):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5000")),
+        debug=env_flag("FLASK_DEBUG", False),
+        use_reloader=env_flag("FLASK_USE_RELOADER", False),
+    )

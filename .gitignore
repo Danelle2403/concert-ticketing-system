@@ -1,0 +1,27 @@
+.env
+.DS_Store
+
+# Python
+.venv/
+.pytest_cache/
+.mypy_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.coverage
+.coverage.*
+htmlcov/
+
+# Local data and databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Node / frontend build artifacts
+node_modules/
+dist/
+coverage/
+
+# Logs
+*.log

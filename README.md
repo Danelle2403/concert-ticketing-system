@@ -14,7 +14,7 @@ The system supports 3 main scenarios:
 | Microservices | Python, Flask |
 | API Gateway | Kong |
 | Messaging | RabbitMQ (AMQP) |
-| Database | MySQL (User Service), Supabase/PostgreSQL (Ticket Service) |
+| Database | MySQL (User Service), PostgreSQL (Event + Ticket Atomic), SQLite (Purchase), InnoDB/MySQL-compatible stores elsewhere |
 | External Services | Stripe (Payments), SendGrid (Notifications), OutSystems (Order Service) |
 | Deployment | Docker, Docker Compose |
 | Version Control | GitHub |
@@ -71,6 +71,7 @@ docker-compose up --build
 | Purchase Composite | http://localhost:5010 |
 | Refund Composite | http://localhost:5011 |
 | Edit Event Composite | http://localhost:5012 |
+| Ticket Atomic Service | http://localhost:5002/health |
 | Notification Service | http://localhost:5013/health |
 | Payment Service | http://localhost:5014/health |
 | RabbitMQ Dashboard | http://localhost:15672 |
@@ -78,11 +79,14 @@ docker-compose up --build
 ### 4. Seed demo users/events
 ```bash
 curl -X POST http://localhost:5001/user/seed
+curl -X POST http://localhost:5004/inventory/admin/seed-order-demo
 ```
 
 Default demo users:
 - Fan login `User ID = 1`
 - Manager login `User ID = 2`
+
+The extra seat inventory seed keeps the local demo data aligned with the external OrderService rows used by the purchase/refund wrappers.
 
 ### 5. Stop all services
 ```bash
@@ -93,6 +97,20 @@ docker-compose down
 ```bash
 python3 seat-inventory/smoke_test.py
 ```
+
+### 7. Run Python service tests locally
+Each Python service now includes `pytest` in its own `requirements.txt`.
+Docker still isolates the running services, but host-side test commands use your host Python unless you run them inside a container or install that service's requirements into a venv.
+
+Example local workflow:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r create-edit-event-composite/requirements.txt
+python -m pytest -q create-edit-event-composite/tests
+```
+
+Use the same pattern for `user-service`, `seat-inventory`, `purchase-composite`, `refund-composite`, `notification-service`, `payment-service`, and `ticket_atomic`.
 
 ## Project Structure
 ```
@@ -118,6 +136,7 @@ concert-ticketing-system/
 ├── purchase-composite/        # Scenario 1 orchestration
 ├── refund-composite/          # Scenario 3 / ticket refund orchestration
 ├── create-edit-event-composite/ # Scenario 2 orchestration
+├── ticket_atomic/              # Ticket issuance/validation atomic microservice
 ├── notification-service/      # SendGrid wrapper + RabbitMQ consumer
 ├── payment-service/           # Stripe wrapper (standalone for now)
 ├── kong/                      # Kong declarative routes
@@ -167,6 +186,15 @@ concert-ticketing-system/
 | POST | /refunds/<ticketId> | Refund one ticket |
 | POST | /refunds/event/<eventId> | Refund all active tickets for an event |
 
+## API Endpoints — Ticket Atomic Service
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /health | Health check + schema bootstrap |
+| POST | /tickets/issue | Issue a ticket for an event |
+| GET | /tickets/<ticketId> | Fetch one ticket |
+| GET | /tickets/event/<eventId> | Fetch tickets for an event |
+| POST | /tickets/<ticketId>/invalidate | Invalidate a ticket |
+
 ## API Endpoints — Edit Event Composite
 | Method | Endpoint | Description |
 |---|---|---|
@@ -206,6 +234,7 @@ concert-ticketing-system/
 ## Notes & Assumptions
 - The API Gateway runs on port 8000
 - Each service has its own database
+- Purchase checkout writes orders to the external OutSystems OrderService and issues tickets through the local `ticket-atomic` service
 - The Stripe wrapper is now available as a standalone service, but it is not yet wired into the purchase or cancel composites
 - RabbitMQ is used for async `event.updated` and `event.cancelled` fanout from the create/edit composite to the notification wrapper
 - Event edit notifications include refund-request guidance, and cancel notifications include Stripe refund guidance for ticket holders that are not currently `cancelled` or `refunded`
