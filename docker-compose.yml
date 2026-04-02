@@ -132,6 +132,36 @@ services:
       test: ["CMD-SHELL", "pg_isready -U event_user -d event_service_db"]
       interval: 10s
       timeout: 5s
+    retries: 5
+    networks:
+      - ticketing-net
+
+  # ── TICKET ATOMIC SERVICE ──────────────────────────────────
+  ticket-atomic:
+    build: ./ticket_atomic
+    ports:
+      - "5002:5000"
+    environment:
+      - DATABASE_URL=postgresql://ticket_user:ticket_password@ticket-atomic-db:5432/ticket_atomic_db
+      - PORT=5000
+    depends_on:
+      ticket-atomic-db:
+        condition: service_healthy
+    networks:
+      - ticketing-net
+
+  ticket-atomic-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=ticket_user
+      - POSTGRES_PASSWORD=ticket_password
+      - POSTGRES_DB=ticket_atomic_db
+    volumes:
+      - ticket-atomic-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticket_user -d ticket_atomic_db"]
+      interval: 10s
+      timeout: 5s
       retries: 5
     networks:
       - ticketing-net
@@ -145,7 +175,8 @@ services:
       - USER_SERVICE_URL=http://user-service:5000
       - EVENT_SERVICE_URL=http://event-service:5000
       - SEAT_INVENTORY_URL=http://seat-inventory:5000
-      - TICKET_SERVICE_URL=https://ticketatomic-production.up.railway.app
+      - TICKET_SERVICE_URL=http://ticket-atomic:5000
+      - ORDER_SERVICE_URL=https://personal-uq3wxrah.outsystemscloud.com/OrderService/rest/Order
       - PURCHASE_DB_PATH=/data/purchase.db
     volumes:
       - purchase-data:/data
@@ -153,6 +184,7 @@ services:
       - user-service
       - event-service
       - seat-inventory
+      - ticket-atomic
     networks:
       - ticketing-net
 
@@ -165,10 +197,23 @@ services:
       - USER_SERVICE_URL=http://user-service:5000
       - PURCHASE_SERVICE_URL=http://purchase-composite:5000
       - SEAT_INVENTORY_URL=http://seat-inventory:5000
+      - TICKET_SERVICE_URL=http://ticket-atomic:5000
     depends_on:
       - user-service
       - purchase-composite
       - seat-inventory
+      - ticket-atomic
+    networks:
+      - ticketing-net
+
+  # ── PAYMENT WRAPPER ─────────────────────────────────────────
+  payment-service:
+    build: ./payment-service
+    ports:
+      - "5014:5000"
+    environment:
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
     networks:
       - ticketing-net
 
@@ -181,10 +226,34 @@ services:
       - EVENT_SERVICE_URL=http://event-service:5000
       - USER_SERVICE_URL=http://user-service:5000
       - SEAT_INVENTORY_URL=http://seat-inventory:5000
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/%2F
+      - NOTIFICATION_EXCHANGE=concert.events
+      - EVENT_UPDATED_ROUTING_KEY=event.updated
+      - EVENT_CANCELLED_ROUTING_KEY=event.cancelled
     depends_on:
       - event-service
       - user-service
       - seat-inventory
+      - rabbitmq
+    networks:
+      - ticketing-net
+
+  # ── NOTIFICATION WRAPPER ────────────────────────────────────
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "5013:5000"
+    environment:
+      - USER_SERVICE_URL=http://user-service:5000
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/%2F
+      - NOTIFICATION_EXCHANGE=concert.events
+      - NOTIFICATION_QUEUE=notification.event-updated
+      - NOTIFICATION_ROUTING_KEYS=event.updated,event.cancelled
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
+    depends_on:
+      - user-service
+      - rabbitmq
     networks:
       - ticketing-net
 
@@ -253,6 +322,7 @@ volumes:
   user-db-data:
   seat-inventory-db-data:
   event-postgres-data:
+  ticket-atomic-postgres-data:
   purchase-data:
 
 # ── NETWORKS ──────────────────────────────────────────────────

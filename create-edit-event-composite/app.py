@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+import event_bus
 import service_clients
 
 
@@ -209,6 +210,10 @@ def create_app(test_config=None):
         USER_SERVICE_URL=os.environ.get("USER_SERVICE_URL", "http://localhost:5001"),
         EVENT_SERVICE_URL=os.environ.get("EVENT_SERVICE_URL", "http://localhost:5002"),
         SEAT_INVENTORY_URL=os.environ.get("SEAT_INVENTORY_URL", "http://localhost:5004"),
+        RABBITMQ_URL=os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/%2F"),
+        NOTIFICATION_EXCHANGE=os.environ.get("NOTIFICATION_EXCHANGE", "concert.events"),
+        EVENT_UPDATED_ROUTING_KEY=os.environ.get("EVENT_UPDATED_ROUTING_KEY", "event.updated"),
+        EVENT_CANCELLED_ROUTING_KEY=os.environ.get("EVENT_CANCELLED_ROUTING_KEY", "event.cancelled"),
         REQUEST_TIMEOUT_SECONDS=int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "8")),
     )
 
@@ -227,6 +232,22 @@ def create_app(test_config=None):
                 },
             }
         )
+
+    def queue_notification(routing_key, payload, warnings):
+        if not payload.get("changes"):
+            return False
+
+        try:
+            event_bus.publish_message(
+                app.config["RABBITMQ_URL"],
+                app.config["NOTIFICATION_EXCHANGE"],
+                routing_key,
+                payload,
+            )
+            return True
+        except Exception as error:
+            warnings.append(f"Event change succeeded, but fan notifications were not queued: {error}")
+            return False
 
     def handle_create_event():
         data = request.get_json(silent=True) or {}
@@ -463,8 +484,17 @@ def create_app(test_config=None):
                 "integration": {
                     "seatInventoryEventId": seat_inventory_event_id,
                     "inventoryValidation": inventory_summary,
+                    "notificationQueued": False,
                 },
             }
+
+            notification_payload = event_bus.build_event_updated_message(current_event, event, manager)
+            response_payload["integration"]["notificationQueued"] = queue_notification(
+                app.config["EVENT_UPDATED_ROUTING_KEY"],
+                notification_payload,
+                warnings,
+            )
+
             write_audit_log(
                 "EDIT_EVENT",
                 "SUCCESS",
@@ -489,6 +519,87 @@ def create_app(test_config=None):
             )
             return build_error(error.status_code, error.code, error.message, error.payload)
 
+    def handle_cancel_event(event_id):
+        data = request.get_json(silent=True) or {}
+
+        try:
+            manager_id = extract_manager_id(data)
+        except ValueError as error:
+            return build_error(400, "VALIDATION_ERROR", str(error))
+
+        cancel_payload = ensure_changed_by({"reason": data.get("reason")}, manager_id)
+        warnings = []
+
+        try:
+            manager = service_clients.validate_manager_access(
+                app.config["USER_SERVICE_URL"],
+                manager_id,
+                app.config["REQUEST_TIMEOUT_SECONDS"],
+            )
+
+            current_event = service_clients.get_event_record(
+                app.config["EVENT_SERVICE_URL"],
+                event_id,
+                app.config["REQUEST_TIMEOUT_SECONDS"],
+            )
+            if current_event.get("managerId") != manager_id:
+                return build_error(
+                    403,
+                    "MANAGER_NOT_OWNER",
+                    "This event is owned by a different manager.",
+                )
+
+            event = service_clients.cancel_event_record(
+                app.config["EVENT_SERVICE_URL"],
+                event_id,
+                cancel_payload,
+                app.config["REQUEST_TIMEOUT_SECONDS"],
+            )
+
+            response_payload = {
+                "manager": manager,
+                "event": event,
+                "integration": {
+                    "notificationQueued": False,
+                    "refundFlow": {
+                        "requestRequired": False,
+                        "provider": "stripe",
+                        "status": "planned",
+                    },
+                },
+            }
+
+            notification_payload = event_bus.build_event_cancelled_message(current_event, event, manager)
+            response_payload["integration"]["notificationQueued"] = queue_notification(
+                app.config["EVENT_CANCELLED_ROUTING_KEY"],
+                notification_payload,
+                warnings,
+            )
+
+            write_audit_log(
+                "CANCEL_EVENT",
+                "SUCCESS",
+                data,
+                response_payload,
+                event_id=event_id,
+                manager_id=manager_id,
+            )
+            return build_success(
+                response_payload,
+                message="Manager event cancelled",
+                warnings=warnings,
+            )
+        except service_clients.ServiceError as error:
+            write_audit_log(
+                "CANCEL_EVENT",
+                "FAILED",
+                data,
+                error.payload,
+                event_id=event_id,
+                manager_id=manager_id,
+            )
+            return build_error(error.status_code, error.code, error.message, error.payload)
+
     @app.route("/manager/events", methods=["POST"])
     def create_event():
         return handle_create_event()
@@ -504,6 +615,14 @@ def create_app(test_config=None):
     @app.route("/events/<event_id>/edit", methods=["PUT"])
     def edit_event_alias(event_id):
         return handle_edit_event(event_id)
+
+    @app.route("/manager/events/<event_id>/cancel", methods=["POST"])
+    def cancel_event(event_id):
+        return handle_cancel_event(event_id)
+
+    @app.route("/events/<event_id>/cancel", methods=["POST"])
+    def cancel_event_alias(event_id):
+        return handle_cancel_event(event_id)
 
     @app.route("/manager/events", methods=["GET"])
     def list_manager_event_links():
