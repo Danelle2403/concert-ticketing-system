@@ -3,19 +3,42 @@ from flask_cors import CORS
 import mysql.connector
 import os
 import re
+import time
 
 app = Flask(__name__)
 CORS(app)
 
+DB_CONNECT_RETRIES = int(os.environ.get("DB_CONNECT_RETRIES", "15"))
+DB_CONNECT_RETRY_DELAY_SECONDS = float(os.environ.get("DB_CONNECT_RETRY_DELAY_SECONDS", "1"))
+DB_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5"))
+
 
 # ── DATABASE CONNECTION ───────────────────────────────────────
 def get_db():
-    return mysql.connector.connect(
-        host=os.environ.get("DB_HOST", "localhost"),
-        user=os.environ.get("DB_USER", "root"),
-        password=os.environ.get("DB_PASSWORD", "root"),
-        database=os.environ.get("DB_NAME", "user_db"),
-    )
+    last_error = None
+    for attempt in range(DB_CONNECT_RETRIES):
+        try:
+            return mysql.connector.connect(
+                host=os.environ.get("DB_HOST", "localhost"),
+                user=os.environ.get("DB_USER", "root"),
+                password=os.environ.get("DB_PASSWORD", "root"),
+                database=os.environ.get("DB_NAME", "user_db"),
+                connection_timeout=DB_CONNECT_TIMEOUT_SECONDS,
+            )
+        except mysql.connector.Error as error:
+            last_error = error
+            if attempt == DB_CONNECT_RETRIES - 1:
+                break
+            time.sleep(DB_CONNECT_RETRY_DELAY_SECONDS)
+
+    raise last_error
+
+
+def env_flag(name, default=False):
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def normalize_user(user):
@@ -60,7 +83,24 @@ def parse_int(value, field_name):
 # ── HEALTH CHECK ──────────────────────────────────────────────
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "User Service is running"}), 200
+    db = None
+    try:
+        db = get_db()
+        return jsonify({"status": "User Service is running", "database": "ok"}), 200
+    except Exception as error:
+        return (
+            jsonify(
+                {
+                    "status": "User Service is running",
+                    "database": "error",
+                    "error": str(error),
+                }
+            ),
+            503,
+        )
+    finally:
+        if db:
+            db.close()
 
 
 # ── GET ALL USERS ─────────────────────────────────────────────
@@ -508,4 +548,9 @@ def cancel_managed_event(eventId):
 
 # ── MAIN ──────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5000")),
+        debug=env_flag("FLASK_DEBUG", False),
+        use_reloader=env_flag("FLASK_USE_RELOADER", False),
+    )

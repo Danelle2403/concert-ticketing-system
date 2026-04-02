@@ -13,6 +13,9 @@ CORS(app)
 
 DEFAULT_HOLD_TTL_SECONDS = int(os.environ.get("DEFAULT_HOLD_TTL_SECONDS", "300"))
 MAX_HOLD_TTL_SECONDS = int(os.environ.get("MAX_HOLD_TTL_SECONDS", "1800"))
+DB_CONNECT_RETRIES = int(os.environ.get("DB_CONNECT_RETRIES", "15"))
+DB_CONNECT_RETRY_DELAY_SECONDS = float(os.environ.get("DB_CONNECT_RETRY_DELAY_SECONDS", "1"))
+DB_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5"))
 ORDER_ALIGNED_DEMO_INVENTORY = [
     {"eventId": "1", "seatCategory": "VIP", "totalSeats": 40, "availableSeats": 40},
     {"eventId": "1", "seatCategory": "STANDARD", "totalSeats": 150, "availableSeats": 149},
@@ -76,12 +79,30 @@ ORDER_ALIGNED_DEMO_HOLDS = [
 
 
 def get_db():
-    return mysql.connector.connect(
-        host=os.environ.get("DB_HOST", "localhost"),
-        user=os.environ.get("DB_USER", "root"),
-        password=os.environ.get("DB_PASSWORD", "root"),
-        database=os.environ.get("DB_NAME", "seat_inventory_db"),
-    )
+    last_error = None
+    for attempt in range(DB_CONNECT_RETRIES):
+        try:
+            return mysql.connector.connect(
+                host=os.environ.get("DB_HOST", "localhost"),
+                user=os.environ.get("DB_USER", "root"),
+                password=os.environ.get("DB_PASSWORD", "root"),
+                database=os.environ.get("DB_NAME", "seat_inventory_db"),
+                connection_timeout=DB_CONNECT_TIMEOUT_SECONDS,
+            )
+        except mysql.connector.Error as error:
+            last_error = error
+            if attempt == DB_CONNECT_RETRIES - 1:
+                break
+            time.sleep(DB_CONNECT_RETRY_DELAY_SECONDS)
+
+    raise last_error
+
+
+def env_flag(name, default=False):
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def release_expired_holds(cursor, event_id=None, seat_category=None, hold_id=None):
@@ -244,7 +265,24 @@ def seed_order_aligned_demo_inventory():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "Seat Inventory Service is running"}), 200
+    db = None
+    try:
+        db = get_db()
+        return jsonify({"status": "Seat Inventory Service is running", "database": "ok"}), 200
+    except Exception as error:
+        return (
+            jsonify(
+                {
+                    "status": "Seat Inventory Service is running",
+                    "database": "error",
+                    "error": str(error),
+                }
+            ),
+            503,
+        )
+    finally:
+        if db:
+            db.close()
 
 
 @app.route("/inventory", methods=["GET"])
@@ -791,4 +829,9 @@ def get_hold(hold_id):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5000")),
+        debug=env_flag("FLASK_DEBUG", False),
+        use_reloader=env_flag("FLASK_USE_RELOADER", False),
+    )

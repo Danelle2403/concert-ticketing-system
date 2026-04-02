@@ -22,6 +22,13 @@ ORDER_SERVICE_URL = os.environ.get(
 ).rstrip("/")
 DB_PATH = os.environ.get("PURCHASE_DB_PATH", "/data/purchase.db")
 
+
+def env_flag(name, default=False):
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
 ORDER_ALIGNED_DEMO_EVENTS = {
     "1": {
         "id": "1",
@@ -845,4 +852,9 @@ def ticket_update_status(ticketId):
 
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5000")),
+        debug=env_flag("FLASK_DEBUG", False),
+        use_reloader=env_flag("FLASK_USE_RELOADER", False),
+    )

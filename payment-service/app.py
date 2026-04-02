@@ -5,6 +5,13 @@ from flask_cors import CORS
 import stripe
 
 
+def env_flag(name, default=False):
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def build_success(data, status=200, message=None):
     payload = {"data": data}
     if message:
@@ -214,4 +221,9 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5000")),
+        debug=env_flag("FLASK_DEBUG", False),
+        use_reloader=env_flag("FLASK_USE_RELOADER", False),
+    )

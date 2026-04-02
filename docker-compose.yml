@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
 
   # ── UI LAYER ────────────────────────────────────────────────
@@ -41,6 +39,7 @@ services:
   # ── USER SERVICE ─────────────────────────────────────────────
   user-service:
     build: ./user-service
+    restart: unless-stopped
     ports:
       - "5001:5000"
     environment:
@@ -48,6 +47,8 @@ services:
       - DB_USER=root
       - DB_PASSWORD=root
       - DB_NAME=user_db
+      - FLASK_DEBUG=0
+      - FLASK_USE_RELOADER=0
     depends_on:
       user-db:
         condition: service_healthy
@@ -57,6 +58,8 @@ services:
   # ── USER SERVICE DATABASE ────────────────────────────────────
   user-db:
     image: mysql:8.0
+    command: --innodb-buffer-pool-size=128M --performance-schema=OFF --max-connections=64
+    restart: unless-stopped
     environment:
       - MYSQL_ROOT_PASSWORD=root
       - MYSQL_DATABASE=user_db
@@ -74,6 +77,7 @@ services:
   # ── SEAT INVENTORY SERVICE ────────────────────────────────────
   seat-inventory:
     build: ./seat-inventory
+    restart: unless-stopped
     ports:
       - "5004:5000"
     environment:
@@ -83,6 +87,8 @@ services:
       - DB_NAME=seat_inventory_db
       - DEFAULT_HOLD_TTL_SECONDS=300
       - MAX_HOLD_TTL_SECONDS=1800
+      - FLASK_DEBUG=0
+      - FLASK_USE_RELOADER=0
     depends_on:
       seat-inventory-db:
         condition: service_healthy
@@ -92,6 +98,8 @@ services:
   # ── SEAT INVENTORY DATABASE ───────────────────────────────────
   seat-inventory-db:
     image: mysql:8.0
+    command: --innodb-buffer-pool-size=128M --performance-schema=OFF --max-connections=64
+    restart: unless-stopped
     environment:
       - MYSQL_ROOT_PASSWORD=root
       - MYSQL_DATABASE=seat_inventory_db
@@ -139,6 +147,7 @@ services:
   # ── TICKET ATOMIC SERVICE ──────────────────────────────────
   ticket-atomic:
     build: ./ticket_atomic
+    restart: unless-stopped
     ports:
       - "5002:5000"
     environment:
@@ -169,6 +178,7 @@ services:
   # ── PURCHASE COMPOSITE ──────────────────────────────────────
   purchase-composite:
     build: ./purchase-composite
+    restart: unless-stopped
     ports:
       - "5010:5000"
     environment:
@@ -178,6 +188,8 @@ services:
       - TICKET_SERVICE_URL=http://ticket-atomic:5000
       - ORDER_SERVICE_URL=https://personal-uq3wxrah.outsystemscloud.com/OrderService/rest/Order
       - PURCHASE_DB_PATH=/data/purchase.db
+      - FLASK_DEBUG=0
+      - FLASK_USE_RELOADER=0
     volumes:
       - purchase-data:/data
     depends_on:
@@ -191,6 +203,7 @@ services:
   # ── REFUND COMPOSITE ────────────────────────────────────────
   refund-composite:
     build: ./refund-composite
+    restart: unless-stopped
     ports:
       - "5011:5000"
     environment:
@@ -198,6 +211,8 @@ services:
       - PURCHASE_SERVICE_URL=http://purchase-composite:5000
       - SEAT_INVENTORY_URL=http://seat-inventory:5000
       - TICKET_SERVICE_URL=http://ticket-atomic:5000
+      - FLASK_DEBUG=0
+      - FLASK_USE_RELOADER=0
     depends_on:
       - user-service
       - purchase-composite
@@ -209,27 +224,34 @@ services:
   # ── PAYMENT WRAPPER ─────────────────────────────────────────
   payment-service:
     build: ./payment-service
+    restart: unless-stopped
     ports:
       - "5014:5000"
     environment:
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
+      - FLASK_DEBUG=0
+      - FLASK_USE_RELOADER=0
     networks:
       - ticketing-net
 
   # ── EDIT EVENT COMPOSITE ────────────────────────────────────
   edit-event-composite:
     build: ./create-edit-event-composite
+    restart: unless-stopped
     ports:
       - "5012:5000"
     environment:
       - EVENT_SERVICE_URL=http://event-service:5000
       - USER_SERVICE_URL=http://user-service:5000
       - SEAT_INVENTORY_URL=http://seat-inventory:5000
+      - REFUND_SERVICE_URL=http://refund-composite:5000
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/%2F
       - NOTIFICATION_EXCHANGE=concert.events
       - EVENT_UPDATED_ROUTING_KEY=event.updated
       - EVENT_CANCELLED_ROUTING_KEY=event.cancelled
+      - FLASK_DEBUG=0
+      - FLASK_USE_RELOADER=0
     depends_on:
       - event-service
       - user-service
@@ -241,6 +263,7 @@ services:
   # ── NOTIFICATION WRAPPER ────────────────────────────────────
   notification-service:
     build: ./notification-service
+    restart: unless-stopped
     ports:
       - "5013:5000"
     environment:
@@ -251,6 +274,8 @@ services:
       - NOTIFICATION_ROUTING_KEYS=event.updated,event.cancelled
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
+      - FLASK_DEBUG=0
+      - FLASK_USE_RELOADER=0
     depends_on:
       - user-service
       - rabbitmq
@@ -260,6 +285,7 @@ services:
   # ── RABBITMQ ─────────────────────────────────────────────────
   rabbitmq:
     image: rabbitmq:3-management
+    restart: unless-stopped
     ports:
       - "5672:5672"
       - "15672:15672"

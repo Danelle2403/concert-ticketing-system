@@ -9,6 +9,13 @@ import event_bus
 import service_clients
 
 
+def env_flag(name, default=False):
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def build_success(data, status=200, message=None, warnings=None):
     payload = {"data": data}
     if message:
@@ -210,6 +217,7 @@ def create_app(test_config=None):
         USER_SERVICE_URL=os.environ.get("USER_SERVICE_URL", "http://localhost:5001"),
         EVENT_SERVICE_URL=os.environ.get("EVENT_SERVICE_URL", "http://localhost:5002"),
         SEAT_INVENTORY_URL=os.environ.get("SEAT_INVENTORY_URL", "http://localhost:5004"),
+        REFUND_SERVICE_URL=os.environ.get("REFUND_SERVICE_URL", "http://refund-composite:5000"),
         RABBITMQ_URL=os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/%2F"),
         NOTIFICATION_EXCHANGE=os.environ.get("NOTIFICATION_EXCHANGE", "concert.events"),
         EVENT_UPDATED_ROUTING_KEY=os.environ.get("EVENT_UPDATED_ROUTING_KEY", "event.updated"),
@@ -248,6 +256,19 @@ def create_app(test_config=None):
         except Exception as error:
             warnings.append(f"Event change succeeded, but fan notifications were not queued: {error}")
             return False
+
+    def build_refund_flow_plan(event_id):
+        refund_service_url = str(app.config.get("REFUND_SERVICE_URL") or "").rstrip("/")
+        return {
+            "requestRequired": False,
+            "provider": "stripe",
+            "service": "refund-composite",
+            "status": "planned",
+            "triggered": False,
+            "eventRefundEndpoint": (
+                f"{refund_service_url}/refunds/event/{event_id}" if refund_service_url else None
+            ),
+        }
 
     def handle_create_event():
         data = request.get_json(silent=True) or {}
@@ -561,11 +582,7 @@ def create_app(test_config=None):
                 "event": event,
                 "integration": {
                     "notificationQueued": False,
-                    "refundFlow": {
-                        "requestRequired": False,
-                        "provider": "stripe",
-                        "status": "planned",
-                    },
+                    "refundFlow": build_refund_flow_plan(event_id),
                 },
             }
 
@@ -668,4 +685,9 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5000")),
+        debug=env_flag("FLASK_DEBUG", False),
+        use_reloader=env_flag("FLASK_USE_RELOADER", False),
+    )

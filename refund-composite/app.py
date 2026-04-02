@@ -13,6 +13,13 @@ PURCHASE_SERVICE_URL = os.environ.get("PURCHASE_SERVICE_URL", "http://purchase-c
 SEAT_INVENTORY_URL = os.environ.get("SEAT_INVENTORY_URL", "http://seat-inventory:5000")
 
 
+def env_flag(name, default=False):
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def req_json(method, url, payload=None, timeout=8):
     res = requests.request(method, url, json=payload, timeout=timeout)
     try:
@@ -130,4 +137,9 @@ def refund_event(eventId):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5000")),
+        debug=env_flag("FLASK_DEBUG", False),
+        use_reloader=env_flag("FLASK_USE_RELOADER", False),
+    )
