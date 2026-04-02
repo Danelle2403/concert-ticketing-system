@@ -98,6 +98,20 @@ docker-compose down
 python3 seat-inventory/smoke_test.py
 ```
 
+### 7. Run Python service tests locally
+Each Python service now includes `pytest` in its own `requirements.txt`.
+Docker still isolates the running services, but host-side test commands use your host Python unless you run them inside a container or install that service's requirements into a venv.
+
+Example local workflow:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r create-edit-event-composite/requirements.txt
+python -m pytest -q create-edit-event-composite/tests
+```
+
+Use the same pattern for `user-service`, `seat-inventory`, `purchase-composite`, `refund-composite`, `notification-service`, `payment-service`, and `ticket_atomic`.
+
 ## Project Structure
 ```
 concert-ticketing-system/
