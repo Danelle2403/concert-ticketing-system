@@ -9,12 +9,22 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
+# ── Service URLs ──
 USER_SERVICE_URL = os.environ.get("USER_SERVICE_URL", "http://user-service:5000")
 EVENT_SERVICE_URL = os.environ.get("EVENT_SERVICE_URL", "http://event-service:5000")
 SEAT_INVENTORY_URL = os.environ.get("SEAT_INVENTORY_URL", "http://seat-inventory:5000")
 TICKET_SERVICE_URL = os.environ.get("TICKET_SERVICE_URL", "https://ticketatomic-production.up.railway.app")
+ORDER_SERVICE_URL = os.environ.get(
+    "ORDER_SERVICE_URL",
+    "https://personal-uq3wxrah.outsystemscloud.com/OrderService/rest/Order",
+)
 DB_PATH = os.environ.get("PURCHASE_DB_PATH", "/data/purchase.db")
 
+
+# ── Local DB for ticket_map only ──
+# We keep ticket_map locally because it tracks holdId-to-ticketId mappings
+# needed for compensating transactions (seat releases, refunds).
+# The Order/purchase record itself lives in the OutSystems Order service.
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -26,20 +36,6 @@ def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS purchases (
-            purchaseId TEXT PRIMARY KEY,
-            userId INTEGER NOT NULL,
-            eventId TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            seatCategory TEXT NOT NULL,
-            status TEXT NOT NULL,
-            paymentId TEXT,
-            createdAt TEXT NOT NULL
-        )
-        """
-    )
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS ticket_map (
@@ -62,6 +58,7 @@ def init_db():
 
 
 def req_json(method, url, payload=None, timeout=8):
+    """Fire an HTTP request and return (status_code, parsed_body)."""
     res = requests.request(method, url, json=payload, timeout=timeout)
     try:
         body = res.json()
@@ -71,6 +68,7 @@ def req_json(method, url, payload=None, timeout=8):
 
 
 def issue_ticket(event_id):
+    """Ask the Ticket Atomic service for a new ticket ID."""
     code, body = req_json("POST", f"{TICKET_SERVICE_URL}/tickets/issue", {"event_id": event_id})
     if code in (200, 201) and body.get("ticket_id"):
         return body["ticket_id"]
@@ -95,12 +93,12 @@ def checkout():
     if quantity <= 0:
         return jsonify({"error": "quantity must be > 0"}), 400
 
-    # Validate user
+    # ── 1. Validate user ──
     code, user = req_json("GET", f"{USER_SERVICE_URL}/user/{user_id}")
     if code != 200:
         return jsonify({"error": "User not found"}), 404
 
-    # Validate event
+    # ── 2. Validate event ──
     code, event = req_json("GET", f"{EVENT_SERVICE_URL}/events/{event_id}")
     if code != 200:
         return jsonify({"error": "Event not found"}), 404
@@ -117,8 +115,8 @@ def checkout():
     cur = conn.cursor()
 
     try:
+        # ── 3. Reserve seats & issue tickets ──
         for _ in range(quantity):
-            # Reserve one seat per ticket for simple per-ticket refund support
             code, hold = req_json(
                 "POST",
                 f"{SEAT_INVENTORY_URL}/inventory/hold",
@@ -157,15 +155,23 @@ def checkout():
 
             created.append({"ticketId": ticket_id, "holdId": hold_id})
 
-        now = datetime.now(timezone.utc).isoformat()
-        cur.execute(
-            """
-            INSERT INTO purchases (purchaseId, userId, eventId, quantity, seatCategory, status, paymentId, createdAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (purchase_id, int(user_id), event_id, quantity, seat_category, "SUCCESS", payment_id, now),
-        )
+        order_payload = {
+            "UserId": int(user_id),
+            "EventId": event_id,
+            "Quantity": quantity,
+            "SeatCategory": seat_category,
+            "Status": "SUCCESS",
+            "PaymentId": payment_id,
+            "TicketIds": ",".join(item["ticketId"] for item in created),
+            "CreatedAt": datetime.now(timezone.utc).isoformat(),
+        }
 
+        code, order_resp = req_json("POST", f"{ORDER_SERVICE_URL}/", order_payload)
+        if code not in (200, 201):
+            raise RuntimeError(f"Order creation failed: {order_resp}")
+
+        # ── 5. Save ticket_map locally (for hold/refund tracking) ──
+        now = datetime.now(timezone.utc).isoformat()
         for item in created:
             cur.execute(
                 """
@@ -187,13 +193,16 @@ def checkout():
                     now,
                 ),
             )
-
         conn.commit()
+
+        # OutSystems usually returns the created record with an Id field
+        order_id = order_resp.get("Id") or order_resp.get("OrderId") or purchase_id
 
         return (
             jsonify(
                 {
                     "purchaseId": purchase_id,
+                    "orderId": order_id,
                     "status": "SUCCESS",
                     "paymentId": payment_id,
                     "tickets": [c["ticketId"] for c in created],
@@ -205,7 +214,7 @@ def checkout():
     except Exception as e:
         conn.rollback()
 
-        # Compensating rollback
+        # ── Compensating rollback ──
         for item in created:
             req_json(
                 "POST",
@@ -222,16 +231,6 @@ def checkout():
                 {"status": "cancelled"},
             )
 
-        now = datetime.now(timezone.utc).isoformat()
-        cur.execute(
-            """
-            INSERT OR REPLACE INTO purchases (purchaseId, userId, eventId, quantity, seatCategory, status, paymentId, createdAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (purchase_id, int(user_id), event_id, quantity, seat_category, "FAILED", None, now),
-        )
-        conn.commit()
-
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
@@ -239,20 +238,19 @@ def checkout():
 
 @app.route("/purchase/<purchaseId>/status", methods=["GET"])
 def purchase_status(purchaseId):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM purchases WHERE purchaseId = ?", (purchaseId,))
-    row = cur.fetchone()
-    conn.close()
-
-    if not row:
+    """Look up order from OutSystems Order Service."""
+    # TODO: Confirm with Vidhi how to look up orders — by her auto-generated Id,
+    #       or if she added a filter endpoint like ?PurchaseId=...
+    #       For now this tries to fetch by purchaseId directly.
+    code, body = req_json("GET", f"{ORDER_SERVICE_URL}/{purchaseId}")
+    if code != 200:
         return jsonify({"error": "Purchase not found"}), 404
-
-    return jsonify(dict(row)), 200
+    return jsonify(body), 200
 
 
 @app.route("/purchase/ticket/<ticketId>", methods=["GET"])
 def ticket_lookup(ticketId):
+    """Look up ticket mapping from local ticket_map."""
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT * FROM ticket_map WHERE ticketId = ?", (ticketId,))
@@ -267,6 +265,7 @@ def ticket_lookup(ticketId):
 
 @app.route("/purchase/ticket/<ticketId>/status", methods=["POST"])
 def ticket_update_status(ticketId):
+    """Update ticket status in local ticket_map."""
     data = request.get_json() or {}
     status = data.get("status")
     if not status:
