@@ -155,6 +155,8 @@ def checkout():
 
             created.append({"ticketId": ticket_id, "holdId": hold_id})
 
+        # ── 4. Create order via OutSystems Order Service ──
+
         order_payload = {
             "UserId": int(user_id),
             "EventId": event_id,
