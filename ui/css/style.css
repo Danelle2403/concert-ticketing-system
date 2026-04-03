@@ -1248,6 +1248,81 @@ a:hover { color: var(--text-primary); }
     margin-top: 6px;
 }
 
+.checkout-shell {
+    max-width: 1040px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.checkout-shell .event-summary-card {
+    margin-bottom: 0;
+}
+
+.checkout-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.checkout-panel .form-group {
+    margin-bottom: 0;
+}
+
+.checkout-panel-head {
+    margin-bottom: 2px;
+}
+
+.checkout-panel-head .summary-pill {
+    flex-shrink: 0;
+}
+
+.checkout-subtitle {
+    margin-bottom: 0;
+    max-width: 62ch;
+    color: var(--text-secondary);
+    line-height: 1.7;
+}
+
+.checkout-details-panel .total-price {
+    margin-top: 4px;
+}
+
+.checkout-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 6px;
+}
+
+.payment-panel {
+    gap: 18px;
+}
+
+.payment-note {
+    margin: 0;
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(212, 112, 154, 0.28);
+    background: rgba(212, 112, 154, 0.08);
+    color: var(--blush);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.payment-element-shell {
+    padding: 18px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
+        rgba(18, 0, 36, 0.42);
+}
+
+#payment-element {
+    min-height: 260px;
+}
+
 /* ── TABS ────────────────────────────────────────────────── */
 .tab-group {
     display: flex;
@@ -1875,8 +1950,9 @@ a:hover { color: var(--text-primary); }
 }
 
 .event-aux {
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-size: 0.82rem;
+    line-height: 1.6;
 }
 
 .manager-access-card {
@@ -2163,6 +2239,18 @@ a:hover { color: var(--text-primary); }
 
     .container {
         padding: 0 20px;
+    }
+
+    .checkout-shell {
+        gap: 22px;
+    }
+
+    .checkout-panel-head .summary-pill {
+        align-self: flex-start;
+    }
+
+    .payment-element-shell {
+        padding: 14px;
     }
 
     .modal-content-wide {

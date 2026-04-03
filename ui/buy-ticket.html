@@ -26,16 +26,22 @@
         </div>
     </nav>
 
-    <main class="container form-container">
-        <div id="event-summary" class="event-summary-card">
+    <main class="container form-container checkout-shell">
+        <div id="event-summary" class="event-summary-card checkout-summary-card">
             <h2 id="event-name">Loading event...</h2>
             <p id="event-venue"></p>
             <p id="event-date"></p>
             <p id="event-price"></p>
         </div>
 
-        <form id="purchase-form" class="form-panel">
-            <h2>Ticket Details</h2>
+        <form id="purchase-form" class="form-panel checkout-panel checkout-details-panel">
+            <div class="panel-head checkout-panel-head">
+                <div>
+                    <h2>Ticket Details</h2>
+                    <p class="form-subtitle checkout-subtitle">Review your buyer details, seat type, and ticket quantity before moving to payment.</p>
+                </div>
+                <span class="summary-pill">Secure Checkout</span>
+            </div>
 
             <div class="form-group">
                 <label for="buyer-name">Full Name</label>
@@ -71,22 +77,32 @@
                 Reserving your seats...
             </div>
 
-            <button type="submit" class="btn-primary full-width" id="reserve-button">
-                Reserve Seats & Continue
-            </button>
-            <button type="button" class="btn-secondary full-width" onclick="window.location.href='index.html'">
-                Cancel
-            </button>
+            <div class="checkout-actions">
+                <button type="submit" class="btn-primary full-width" id="reserve-button">
+                    Reserve Seats & Continue
+                </button>
+                <button type="button" class="btn-secondary full-width" onclick="window.location.href='index.html'">
+                    Cancel
+                </button>
+            </div>
         </form>
 
-        <section id="payment-panel" class="form-panel hidden">
-            <h2>Secure Payment</h2>
-            <p class="event-aux">Your seats are reserved for 10 minutes while you complete payment.</p>
-            <div id="payment-element" style="padding: 14px 0;"></div>
+        <section id="payment-panel" class="form-panel checkout-panel payment-panel hidden">
+            <div class="panel-head checkout-panel-head">
+                <div>
+                    <h2>Complete Payment</h2>
+                    <p class="form-subtitle checkout-subtitle">Choose your payment method and confirm the booking while your reserved seats are still on hold.</p>
+                </div>
+                <span class="summary-pill">10 Min Hold</span>
+            </div>
+            <p class="payment-note">Card and PayNow are payment methods below. The final action button completes the purchase.</p>
+            <div class="payment-element-shell">
+                <div id="payment-element"></div>
+            </div>
             <div id="stripe-error" class="error-msg hidden"></div>
             <div id="stripe-loading" class="loading-msg hidden">Confirming payment...</div>
             <button type="button" class="btn-primary full-width" id="pay-button">
-                Pay Now
+                Complete Purchase
             </button>
         </section>
     </main>
@@ -234,10 +250,61 @@
             elements = stripe.elements({
                 clientSecret,
                 appearance: {
-                    theme: "stripe",
+                    theme: "night",
                     variables: {
-                        colorPrimary: "#0f172a",
-                        borderRadius: "12px"
+                        colorPrimary: "#d4709a",
+                        colorBackground: "#2a0050",
+                        colorText: "#f8f0ff",
+                        colorTextSecondary: "#d9bee7",
+                        colorDanger: "#fca5a5",
+                        colorIcon: "#f8f0ff",
+                        fontFamily: "Space Grotesk, sans-serif",
+                        spacingUnit: "6px",
+                        borderRadius: "14px"
+                    },
+                    rules: {
+                        ".Block": {
+                            backgroundColor: "transparent",
+                            boxShadow: "none"
+                        },
+                        ".Tab": {
+                            backgroundColor: "#f8f0ff",
+                            color: "#230040",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            boxShadow: "none"
+                        },
+                        ".Tab:hover": {
+                            backgroundColor: "#ffffff"
+                        },
+                        ".Tab--selected": {
+                            backgroundColor: "#ffffff",
+                            color: "#1a0030",
+                            borderColor: "rgba(212, 112, 154, 0.65)",
+                            boxShadow: "0 0 0 3px rgba(212, 112, 154, 0.16)"
+                        },
+                        ".TabLabel": {
+                            fontWeight: "700"
+                        },
+                        ".Label": {
+                            color: "#d9bee7",
+                            fontWeight: "600"
+                        },
+                        ".Input": {
+                            backgroundColor: "#fffdfd",
+                            color: "#230040",
+                            border: "1px solid rgba(35, 0, 64, 0.12)",
+                            boxShadow: "none"
+                        },
+                        ".Input:focus": {
+                            borderColor: "#d4709a",
+                            boxShadow: "0 0 0 3px rgba(212, 112, 154, 0.16)"
+                        },
+                        ".Dropdown": {
+                            backgroundColor: "#fffdfd",
+                            color: "#230040",
+                            border: "1px solid rgba(35, 0, 64, 0.12)",
+                            boxShadow: "none"
+                        }
                     }
                 }
             });
