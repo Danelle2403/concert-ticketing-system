@@ -8,110 +8,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app as user_app
 
-
-DEMO_USERS = [
-    {"id": 1, "name": "Alice Fan", "email": "fan@example.com", "role": "fan"},
-    {"id": 2, "name": "Noah Fan", "email": "fan2@example.com", "role": "fan"},
-    {"id": 3, "name": "Chloe Fan", "email": "fan3@example.com", "role": "fan"},
-    {"id": 99, "name": "Maya Manager", "email": "manager@example.com", "role": "manager"},
-    {"id": 123, "name": "Legacy Fan", "email": "legacyfan@example.com", "role": "fan"},
-]
-
-DEMO_MANAGED_EVENTS = [
-    {
-        "id": 1,
-        "managerId": 99,
-        "eventId": "EVT1001",
-        "name": "The Midnight World Tour",
-        "venue": "Marina Bay Sands, Singapore",
-        "date": "2026-08-15",
-        "price": 88.0,
-        "status": "active",
-    },
-    {
-        "id": 2,
-        "managerId": 99,
-        "eventId": "EVT1002",
-        "name": "Neon Bloom Live",
-        "venue": "Singapore Indoor Stadium",
-        "date": "2026-09-22",
-        "price": 98.0,
-        "status": "active",
-    },
-    {
-        "id": 3,
-        "managerId": 99,
-        "eventId": "1",
-        "name": "Pulse Arena Nights",
-        "venue": "Capitol Theatre, Singapore",
-        "date": "2026-04-18",
-        "price": 80.0,
-        "status": "active",
-    },
-    {
-        "id": 4,
-        "managerId": 99,
-        "eventId": "2",
-        "name": "Skyline VIP Session",
-        "venue": "Singapore Indoor Stadium",
-        "date": "2026-05-02",
-        "price": 200.0,
-        "status": "active",
-    },
-    {
-        "id": 5,
-        "managerId": 99,
-        "eventId": "789",
-        "name": "Harbour Lights Reunion",
-        "venue": "The Star Theatre, Singapore",
-        "date": "2026-03-10",
-        "price": 150.0,
-        "status": "cancelled",
-    },
-]
-
-DEMO_USER_TICKETS = [
-    {
-        "id": 1,
-        "userId": 123,
-        "ticketId": "456",
-        "eventId": "789",
-        "eventName": "Harbour Lights Reunion",
-        "venue": "The Star Theatre, Singapore",
-        "date": "2026-03-10",
-        "status": "refunded",
-    },
-    {
-        "id": 2,
-        "userId": 1,
-        "ticketId": "1",
-        "eventId": "1",
-        "eventName": "Pulse Arena Nights",
-        "venue": "Capitol Theatre, Singapore",
-        "date": "2026-04-18",
-        "status": "cancelled",
-    },
-    {
-        "id": 3,
-        "userId": 2,
-        "ticketId": "2",
-        "eventId": "1",
-        "eventName": "Pulse Arena Nights",
-        "venue": "Capitol Theatre, Singapore",
-        "date": "2026-04-18",
-        "status": "active",
-    },
-    {
-        "id": 4,
-        "userId": 3,
-        "ticketId": "3",
-        "eventId": "2",
-        "eventName": "Skyline VIP Session",
-        "venue": "Singapore Indoor Stadium",
-        "date": "2026-05-02",
-        "status": "active",
-    },
-]
+DEMO_STATE = user_app.load_demo_seed_data()
+DEMO_USERS = deepcopy(DEMO_STATE["users"])
+DEMO_MANAGED_EVENTS = deepcopy(DEMO_STATE["managedEvents"])
+DEMO_USER_TICKETS = deepcopy(DEMO_STATE["userTickets"])
 
 
 def build_demo_state():
@@ -166,9 +66,19 @@ class FakeUserCursor:
             return
 
         if sql.startswith("DELETE FROM user_tickets"):
-            target_ticket_ids = {"1", "2", "3", "456"}
-            target_event_ids = {"1", "2", "789"}
-            target_user_ids = {1, 2, 3, 123}
+            ticket_count = len(DEMO_USER_TICKETS)
+            event_count = len({row["eventId"] for row in DEMO_MANAGED_EVENTS} | {row["eventId"] for row in DEMO_USER_TICKETS})
+            user_count = len({row["id"] for row in DEMO_USERS} | {row["userId"] for row in DEMO_USER_TICKETS} | {row["managerId"] for row in DEMO_MANAGED_EVENTS})
+            target_ticket_ids = {str(value) for value in params[:ticket_count]}
+            target_event_ids = {
+                str(value) for value in params[ticket_count:ticket_count + event_count]
+            }
+            target_user_ids = {
+                int(value)
+                for value in params[
+                    ticket_count + event_count:ticket_count + event_count + user_count
+                ]
+            }
             before = len(state["user_tickets"])
             state["user_tickets"] = [
                 row
@@ -181,7 +91,7 @@ class FakeUserCursor:
             return
 
         if sql.startswith("DELETE FROM managed_events"):
-            target_event_ids = {"EVT1001", "EVT1002", "1", "2", "789"}
+            target_event_ids = {str(value) for value in params}
             before = len(state["managed_events"])
             state["managed_events"] = [
                 row for row in state["managed_events"] if row["eventId"] not in target_event_ids
@@ -190,14 +100,9 @@ class FakeUserCursor:
             return
 
         if sql.startswith("DELETE FROM users"):
-            target_ids = {1, 2, 3, 99, 123}
-            target_emails = {
-                "fan@example.com",
-                "fan2@example.com",
-                "fan3@example.com",
-                "manager@example.com",
-                "legacyfan@example.com",
-            }
+            user_count = len({row["id"] for row in DEMO_USERS} | {row["userId"] for row in DEMO_USER_TICKETS} | {row["managerId"] for row in DEMO_MANAGED_EVENTS})
+            target_ids = {int(value) for value in params[:user_count]}
+            target_emails = {str(value) for value in params[user_count:]}
             before = len(state["users"])
             state["users"] = [
                 row
@@ -208,14 +113,31 @@ class FakeUserCursor:
             return
 
         if sql.startswith("INSERT INTO users (id, name, email, role) VALUES"):
-            state["users"] = deepcopy(DEMO_USERS)
-            state["next_user_id"] = 124
-            self.rowcount = len(state["users"])
+            user = {"id": int(params[0]), "name": params[1], "email": params[2], "role": params[3]}
+            state["users"] = [row for row in state["users"] if row["id"] != user["id"]]
+            state["users"].append(user)
+            state["users"].sort(key=lambda row: row["id"])
+            state["next_user_id"] = max((row["id"] for row in state["users"]), default=0) + 1
+            self.rowcount = 1
             return
 
-        if sql.startswith("INSERT INTO managed_events (managerId, eventId, name, venue, date, price, status) VALUES"):
-            state["managed_events"] = deepcopy(DEMO_MANAGED_EVENTS)
-            self.rowcount = len(state["managed_events"])
+        if sql.startswith("INSERT INTO managed_events (id, managerId, eventId, name, venue, date, price, status) VALUES"):
+            event = {
+                "id": int(params[0]),
+                "managerId": int(params[1]),
+                "eventId": str(params[2]),
+                "name": params[3],
+                "venue": params[4],
+                "date": params[5],
+                "price": params[6],
+                "status": params[7],
+            }
+            state["managed_events"] = [
+                row for row in state["managed_events"] if row["id"] != event["id"]
+            ]
+            state["managed_events"].append(event)
+            state["managed_events"].sort(key=lambda row: row["id"])
+            self.rowcount = 1
             return
 
         if sql.startswith("SELECT * FROM user_tickets WHERE userId = %s"):
@@ -266,10 +188,26 @@ class FakeUserCursor:
             self.rowcount = 1
             return
 
-        if sql.startswith("INSERT INTO user_tickets (userId, ticketId, eventId, eventName, venue, date, status) VALUES"):
-            state["user_tickets"] = deepcopy(DEMO_USER_TICKETS)
-            state["next_ticket_row_id"] = 5
-            self.rowcount = len(state["user_tickets"])
+        if sql.startswith("INSERT INTO user_tickets (id, userId, ticketId, eventId, eventName, venue, date, status) VALUES"):
+            row = {
+                "id": int(params[0]),
+                "userId": int(params[1]),
+                "ticketId": str(params[2]),
+                "eventId": str(params[3]),
+                "eventName": params[4],
+                "venue": params[5],
+                "date": params[6],
+                "status": params[7],
+            }
+            state["user_tickets"] = [
+                existing for existing in state["user_tickets"] if existing["id"] != row["id"]
+            ]
+            state["user_tickets"].append(row)
+            state["user_tickets"].sort(key=lambda item: item["id"])
+            state["next_ticket_row_id"] = (
+                max((item["id"] for item in state["user_tickets"]), default=0) + 1
+            )
+            self.rowcount = 1
             return
 
         if sql.startswith("SELECT * FROM user_tickets WHERE ticketId = %s"):
@@ -387,7 +325,12 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
     response = test_client.post("/user/seed")
 
     assert response.status_code == 200
-    assert response.get_json() == {"status": "seeded"}
+    assert response.get_json() == {
+        "status": "seeded",
+        "userCount": len(DEMO_USERS),
+        "managedEventCount": len(DEMO_MANAGED_EVENTS),
+        "ticketCount": len(DEMO_USER_TICKETS),
+    }
 
     active_event_tickets = test_client.get("/user/tickets/by-event/con-001?status=active")
     assert active_event_tickets.status_code == 200
@@ -407,8 +350,8 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
     managed = test_client.get("/user/managing?userId=99")
     assert managed.status_code == 200
     assert {row["eventId"] for row in managed.get_json()["events"]} == {
-        "EVT1001",
-        "EVT1002",
+        "1001",
+        "1002",
         "1",
         "2",
         "789",

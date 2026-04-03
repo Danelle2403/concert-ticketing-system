@@ -1,7 +1,9 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import json
 import mysql.connector
 import os
+from pathlib import Path
 import re
 import time
 
@@ -11,6 +13,24 @@ CORS(app)
 DB_CONNECT_RETRIES = int(os.environ.get("DB_CONNECT_RETRIES", "15"))
 DB_CONNECT_RETRY_DELAY_SECONDS = float(os.environ.get("DB_CONNECT_RETRY_DELAY_SECONDS", "1"))
 DB_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5"))
+DEMO_STATE_PATH = Path(__file__).resolve().parents[1] / "demo" / "local_demo_state.json"
+
+
+def load_demo_seed_data():
+    with DEMO_STATE_PATH.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def demo_seed_filters(demo_state):
+    users = demo_state["users"]
+    managed_events = demo_state["managedEvents"]
+    user_tickets = demo_state["userTickets"]
+    return {
+        "user_ids": sorted({int(row["id"]) for row in users} | {int(row["userId"]) for row in user_tickets} | {int(row["managerId"]) for row in managed_events}),
+        "emails": sorted({row["email"] for row in users}),
+        "event_ids": sorted({str(row["eventId"]) for row in managed_events} | {str(row["eventId"]) for row in user_tickets}),
+        "ticket_ids": sorted({str(row["ticketId"]) for row in user_tickets}),
+    }
 
 
 # ── DATABASE CONNECTION ───────────────────────────────────────
@@ -192,82 +212,111 @@ def create_user():
 
 
 # ── INTERNAL: SEED DEFAULT USERS/EVENTS ──────────────────────
-@app.route("/user/seed", methods=["POST"])
-def seed_defaults():
+def reset_demo_state(full_reset=False):
     db = None
     try:
+        demo_state = load_demo_seed_data()
+        users = demo_state["users"]
+        managed_events = demo_state["managedEvents"]
+        user_tickets = demo_state["userTickets"]
+        filters = demo_seed_filters(demo_state)
         db = get_db()
         cursor = db.cursor()
-        cursor.execute(
-            """
-            DELETE FROM user_tickets
-            WHERE ticketId IN ('1', '2', '3', '456')
-               OR eventId IN ('1', '2', '789')
-               OR userId IN (1, 2, 3, 123)
-            """
-        )
-        cursor.execute(
-            """
-            DELETE FROM managed_events
-            WHERE eventId IN ('EVT1001', 'EVT1002', '1', '2', '789')
-            """
-        )
-        cursor.execute(
-            """
-            DELETE FROM users
-            WHERE id IN (1, 2, 3, 99, 123)
-               OR email IN (
-                    'fan@example.com',
-                    'fan2@example.com',
-                    'fan3@example.com',
-                    'manager@example.com',
-                    'legacyfan@example.com'
-               )
-            """
-        )
-        cursor.execute(
-            """
-            INSERT INTO users (id, name, email, role)
-            VALUES
-              (1, 'Alice Fan', 'fan@example.com', 'fan'),
-              (2, 'Noah Fan', 'fan2@example.com', 'fan'),
-              (3, 'Chloe Fan', 'fan3@example.com', 'fan'),
-              (99, 'Maya Manager', 'manager@example.com', 'manager'),
-              (123, 'Legacy Fan', 'legacyfan@example.com', 'fan')
-            """
-        )
-        cursor.execute(
-            """
-            INSERT INTO managed_events (managerId, eventId, name, venue, date, price, status)
-            VALUES
-              (99, 'EVT1001', 'The Midnight World Tour', 'Marina Bay Sands, Singapore', '2026-08-15', 88.00, 'active'),
-              (99, 'EVT1002', 'Neon Bloom Live', 'Singapore Indoor Stadium', '2026-09-22', 98.00, 'active'),
-              (99, '1', 'Pulse Arena Nights', 'Capitol Theatre, Singapore', '2026-04-18', 80.00, 'active'),
-              (99, '2', 'Skyline VIP Session', 'Singapore Indoor Stadium', '2026-05-02', 200.00, 'active'),
-              (99, '789', 'Harbour Lights Reunion', 'The Star Theatre, Singapore', '2026-03-10', 150.00, 'cancelled')
-            """
-        )
-        cursor.execute(
-            """
-            INSERT INTO user_tickets (userId, ticketId, eventId, eventName, venue, date, status)
-            VALUES
-              (123, '456', '789', 'Harbour Lights Reunion', 'The Star Theatre, Singapore', '2026-03-10', 'refunded'),
-              (1, '1', '1', 'Pulse Arena Nights', 'Capitol Theatre, Singapore', '2026-04-18', 'cancelled'),
-              (2, '2', '1', 'Pulse Arena Nights', 'Capitol Theatre, Singapore', '2026-04-18', 'active'),
-              (3, '3', '2', 'Skyline VIP Session', 'Singapore Indoor Stadium', '2026-05-02', 'active')
-            """
-        )
+        if full_reset:
+            cursor.execute("DELETE FROM user_tickets")
+            cursor.execute("DELETE FROM managed_events")
+            cursor.execute("DELETE FROM users")
+        else:
+            ticket_placeholders = ", ".join(["%s"] * len(filters["ticket_ids"]))
+            event_placeholders = ", ".join(["%s"] * len(filters["event_ids"]))
+            user_placeholders = ", ".join(["%s"] * len(filters["user_ids"]))
+            email_placeholders = ", ".join(["%s"] * len(filters["emails"]))
+
+            cursor.execute(
+                f"""
+                DELETE FROM user_tickets
+                WHERE ticketId IN ({ticket_placeholders})
+                   OR eventId IN ({event_placeholders})
+                   OR userId IN ({user_placeholders})
+                """,
+                tuple(filters["ticket_ids"] + filters["event_ids"] + filters["user_ids"]),
+            )
+            cursor.execute(
+                f"""
+                DELETE FROM managed_events
+                WHERE eventId IN ({event_placeholders})
+                """,
+                tuple(filters["event_ids"]),
+            )
+            cursor.execute(
+                f"""
+                DELETE FROM users
+                WHERE id IN ({user_placeholders})
+                   OR email IN ({email_placeholders})
+                """,
+                tuple(filters["user_ids"] + filters["emails"]),
+            )
+
+        for user in users:
+            cursor.execute(
+                "INSERT INTO users (id, name, email, role) VALUES (%s, %s, %s, %s)",
+                (user["id"], user["name"], user["email"], user["role"]),
+            )
+        for event in managed_events:
+            cursor.execute(
+                """
+                INSERT INTO managed_events (id, managerId, eventId, name, venue, date, price, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    event["id"],
+                    event["managerId"],
+                    str(event["eventId"]),
+                    event["name"],
+                    event["venue"],
+                    event["date"],
+                    event["price"],
+                    event["status"],
+                ),
+            )
+        for ticket in user_tickets:
+            cursor.execute(
+                """
+                INSERT INTO user_tickets (id, userId, ticketId, eventId, eventName, venue, date, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    ticket["id"],
+                    ticket["userId"],
+                    str(ticket["ticketId"]),
+                    str(ticket["eventId"]),
+                    ticket["eventName"],
+                    ticket["venue"],
+                    ticket["date"],
+                    ticket["status"],
+                ),
+            )
         db.commit()
-        cursor.close()
-        db.close()
-        return jsonify({"status": "seeded"}), 200
+        return {"status": "seeded", "userCount": len(users), "managedEventCount": len(managed_events), "ticketCount": len(user_tickets)}, 200
     except Exception as e:
         if db:
             db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return {"error": str(e)}, 500
     finally:
         if db:
             db.close()
+
+
+@app.route("/user/seed", methods=["POST"])
+def seed_defaults():
+    payload, status = reset_demo_state(full_reset=False)
+    return jsonify(payload), status
+
+
+@app.route("/user/admin/reset-demo", methods=["POST"])
+def reset_demo_defaults():
+    payload, status = reset_demo_state(full_reset=True)
+    return jsonify(payload), status
 
 
 # ── GET TICKETS/EVENTS FOR A FAN ──────────────────────────────

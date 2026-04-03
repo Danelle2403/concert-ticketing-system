@@ -13,6 +13,12 @@ import app as purchase_app
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(purchase_app, "DB_PATH", str(tmp_path / "purchase.db"))
     purchase_app.init_db()
+    conn = purchase_app.get_db()
+    try:
+        purchases, ticket_maps = purchase_app.build_demo_purchase_seed()
+        purchase_app.reset_order_aligned_demo_data(conn, purchases=purchases, ticket_maps=ticket_maps)
+    finally:
+        conn.close()
     return purchase_app.app.test_client()
 
 
@@ -48,9 +54,9 @@ def test_checkout_uses_live_order_service_contract(client, monkeypatch):
     assert payload["orderIds"] == [55]
     assert payload["tickets"] == ["2"]
     assert captured_order_payload == {
-        "FanId": "fan-002",
-        "TicketId": "tkt-002",
-        "ConcertId": "con-001",
+        "FanId": 2,
+        "TicketId": 2,
+        "ConcertId": 1,
         "PaymentChargeId": payload["paymentChargeId"],
         "SeatCategory": "Standard",
         "AmountPaid": 80.0,
@@ -166,11 +172,24 @@ def test_checkout_session_and_confirm_use_stripe_flow(client, monkeypatch):
     assert confirm_payload["tickets"] == ["2"]
     assert confirm_payload["paymentChargeId"] == "ch_123"
     assert captured_order_payload == {
-        "FanId": "fan-002",
-        "TicketId": "tkt-002",
-        "ConcertId": "con-001",
+        "FanId": 2,
+        "TicketId": 2,
+        "ConcertId": 1,
         "PaymentChargeId": "ch_123",
         "SeatCategory": "Standard",
         "AmountPaid": 80.0,
     }
     assert sent_notifications[0]["purchaseId"] == confirm_payload["purchaseId"]
+
+
+def test_create_external_order_rejects_non_numeric_ticket_ids():
+    with pytest.raises(ValueError, match="TicketId"):
+        purchase_app.create_external_order(
+            user_id=2,
+            ticket_id="79c25060-979f-4267-99a0-c1b301427a09",
+            event_id=1,
+            event=purchase_app.ORDER_ALIGNED_DEMO_EVENTS["1"],
+            seat_category="STANDARD",
+            payment_charge_id="ch_123",
+            amount_paid=80.0,
+        )

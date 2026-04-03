@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS events (
-  id UUID PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
   manager_id INTEGER,
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
@@ -23,8 +23,8 @@ ALTER TABLE events
 ADD COLUMN IF NOT EXISTS manager_id INTEGER;
 
 CREATE TABLE IF NOT EXISTS pricing_tiers (
-  id UUID PRIMARY KEY,
-  event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  id BIGSERIAL PRIMARY KEY,
+  event_id BIGINT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   code TEXT NOT NULL,
   name TEXT NOT NULL,
   price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS pricing_tiers (
 );
 
 CREATE TABLE IF NOT EXISTS seat_sections (
-  id UUID PRIMARY KEY,
-  event_id UUID NOT NULL,
+  id BIGSERIAL PRIMARY KEY,
+  event_id BIGINT NOT NULL,
   code TEXT NOT NULL,
   name TEXT NOT NULL,
   pricing_tier_code TEXT NOT NULL,
@@ -54,8 +54,8 @@ CREATE TABLE IF NOT EXISTS seat_sections (
 );
 
 CREATE TABLE IF NOT EXISTS reschedule_history (
-  id UUID PRIMARY KEY,
-  event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  id BIGSERIAL PRIMARY KEY,
+  event_id BIGINT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   previous_start_at TIMESTAMPTZ NOT NULL,
   previous_end_at TIMESTAMPTZ NOT NULL,
   previous_venue_name TEXT NOT NULL,

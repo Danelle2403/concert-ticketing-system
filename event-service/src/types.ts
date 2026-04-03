@@ -16,7 +16,7 @@ export interface Venue {
 }
 
 export interface PricingTier {
-  id: string;
+  id: number;
   code: string;
   name: string;
   price: number;
@@ -26,7 +26,7 @@ export interface PricingTier {
 }
 
 export interface SeatSection {
-  id: string;
+  id: number;
   code: string;
   name: string;
   tierCode: string;
@@ -36,7 +36,7 @@ export interface SeatSection {
 }
 
 export interface RescheduleHistoryEntry {
-  id: string;
+  id: number;
   reason?: string | null;
   changedBy?: string | null;
   changedAt: string;
@@ -53,7 +53,7 @@ export interface RescheduleHistoryEntry {
 }
 
 export interface EventRecord {
-  id: string;
+  id: number;
   managerId?: number | null;
   title: string;
   description: string;
@@ -75,7 +75,7 @@ export interface EventRecord {
 }
 
 export interface EventSummary {
-  id: string;
+  id: number;
   managerId?: number | null;
   title: string;
   description: string;

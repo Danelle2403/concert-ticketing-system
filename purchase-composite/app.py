@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import json
 import os
+from pathlib import Path
 import re
 import sqlite3
 import uuid
@@ -36,164 +37,92 @@ def env_flag(name, default=False):
         return default
     return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
-ORDER_ALIGNED_DEMO_EVENTS = {
-    "1": {
-        "id": "1",
-        "title": "Pulse Arena Nights",
-        "venue": {"name": "Capitol Theatre", "city": "Singapore", "country": "Singapore"},
-        "startAt": "2026-04-18T12:00:00.000Z",
-        "status": "PUBLISHED",
-        "pricingTiers": [
-            {"code": "VIP", "name": "VIP", "price": 150.0, "currency": "SGD"},
-            {"code": "STANDARD", "name": "Standard", "price": 80.0, "currency": "SGD"},
-        ],
-        "defaultSeatCategory": "STANDARD",
-    },
-    "2": {
-        "id": "2",
-        "title": "Skyline VIP Session",
-        "venue": {"name": "Singapore Indoor Stadium", "city": "Singapore", "country": "Singapore"},
-        "startAt": "2026-05-02T12:00:00.000Z",
-        "status": "PUBLISHED",
-        "pricingTiers": [
-            {"code": "VIP", "name": "VIP", "price": 200.0, "currency": "SGD"},
-        ],
-        "defaultSeatCategory": "VIP",
-    },
-    "789": {
-        "id": "789",
-        "title": "Harbour Lights Reunion",
-        "venue": {"name": "The Star Theatre", "city": "Singapore", "country": "Singapore"},
-        "startAt": "2026-03-10T12:00:00.000Z",
-        "status": "CANCELLED",
-        "pricingTiers": [
-            {"code": "VIP", "name": "VIP", "price": 150.0, "currency": "SGD"},
-        ],
-        "defaultSeatCategory": "VIP",
-    },
-}
+DEMO_STATE_PATH = Path(__file__).resolve().parents[1] / "demo" / "local_demo_state.json"
 
-ORDER_ALIGNED_DEMO_PURCHASES = [
-    {
-        "purchaseId": "ORDER-DEMO-1",
-        "orderIds": [1],
-        "ticketIds": ["456"],
-        "userId": 123,
-        "eventId": "789",
-        "quantity": 1,
-        "seatCategory": "VIP",
-        "status": "REFUNDED",
-        "paymentChargeId": "ch_stripe_abc",
-        "amountPaid": 150.0,
-        "createdAt": "2026-03-27T05:42:46+00:00",
-        "updatedAt": "2026-03-27T21:25:49+00:00",
-    },
-    {
-        "purchaseId": "ORDER-DEMO-2",
-        "orderIds": [2],
-        "ticketIds": ["1"],
-        "userId": 1,
-        "eventId": "1",
-        "quantity": 1,
-        "seatCategory": "VIP",
-        "status": "CANCELLED",
-        "paymentChargeId": "ch_stripe_abc123",
-        "amountPaid": 150.0,
-        "createdAt": "2026-03-27T21:15:59+00:00",
-        "updatedAt": "2026-03-27T21:26:14+00:00",
-    },
-    {
-        "purchaseId": "ORDER-DEMO-3",
-        "orderIds": [3],
-        "ticketIds": ["2"],
-        "userId": 2,
-        "eventId": "1",
-        "quantity": 1,
-        "seatCategory": "STANDARD",
-        "status": "SUCCESS",
-        "paymentChargeId": "ch_stripe_def456",
-        "amountPaid": 80.0,
-        "createdAt": "2026-03-27T21:16:23+00:00",
-        "updatedAt": "2026-03-27T21:16:23+00:00",
-    },
-    {
-        "purchaseId": "ORDER-DEMO-4",
-        "orderIds": [4],
-        "ticketIds": ["3"],
-        "userId": 3,
-        "eventId": "2",
-        "quantity": 1,
-        "seatCategory": "VIP",
-        "status": "SUCCESS",
-        "paymentChargeId": "ch_stripe_ghi789",
-        "amountPaid": 200.0,
-        "createdAt": "2026-03-27T21:16:49+00:00",
-        "updatedAt": "2026-03-27T21:16:49+00:00",
-    },
-]
 
-ORDER_ALIGNED_DEMO_TICKET_MAPS = [
-    {
-        "ticketId": "456",
-        "purchaseId": "ORDER-DEMO-1",
-        "orderId": 1,
-        "holdId": "11111111-1111-1111-1111-111111111111",
-        "userId": 123,
-        "eventId": "789",
-        "eventName": "Harbour Lights Reunion",
-        "venue": "The Star Theatre, Singapore",
-        "date": "2026-03-10",
-        "seatCategory": "VIP",
-        "status": "REFUNDED",
-        "createdAt": "2026-03-27T05:42:46+00:00",
-        "updatedAt": "2026-03-27T21:25:49+00:00",
-    },
-    {
-        "ticketId": "1",
-        "purchaseId": "ORDER-DEMO-2",
-        "orderId": 2,
-        "holdId": "22222222-2222-2222-2222-222222222222",
-        "userId": 1,
-        "eventId": "1",
-        "eventName": "Pulse Arena Nights",
-        "venue": "Capitol Theatre, Singapore",
-        "date": "2026-04-18",
-        "seatCategory": "VIP",
-        "status": "CANCELLED",
-        "createdAt": "2026-03-27T21:15:59+00:00",
-        "updatedAt": "2026-03-27T21:26:14+00:00",
-    },
-    {
-        "ticketId": "2",
-        "purchaseId": "ORDER-DEMO-3",
-        "orderId": 3,
-        "holdId": "33333333-3333-3333-3333-333333333333",
-        "userId": 2,
-        "eventId": "1",
-        "eventName": "Pulse Arena Nights",
-        "venue": "Capitol Theatre, Singapore",
-        "date": "2026-04-18",
-        "seatCategory": "STANDARD",
-        "status": "ACTIVE",
-        "createdAt": "2026-03-27T21:16:23+00:00",
-        "updatedAt": "2026-03-27T21:16:23+00:00",
-    },
-    {
-        "ticketId": "3",
-        "purchaseId": "ORDER-DEMO-4",
-        "orderId": 4,
-        "holdId": "44444444-4444-4444-4444-444444444444",
-        "userId": 3,
-        "eventId": "2",
-        "eventName": "Skyline VIP Session",
-        "venue": "Singapore Indoor Stadium",
-        "date": "2026-05-02",
-        "seatCategory": "VIP",
-        "status": "ACTIVE",
-        "createdAt": "2026-03-27T21:16:49+00:00",
-        "updatedAt": "2026-03-27T21:16:49+00:00",
-    },
-]
+def load_demo_seed_data():
+    with DEMO_STATE_PATH.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def build_order_aligned_demo_events():
+    demo_state = load_demo_seed_data()
+    events = {}
+    for event in demo_state["eventServiceEvents"]:
+        event_id = str(event["id"])
+        if event_id not in {"1", "2", "789"}:
+            continue
+        events[event_id] = {
+            "id": event_id,
+            "managerId": event.get("managerId"),
+            "title": event["title"],
+            "description": event.get("description", ""),
+            "venue": event["venue"],
+            "startAt": event["startAt"],
+            "endAt": event["endAt"],
+            "status": event["status"],
+            "pricingTiers": event.get("pricingTiers", []),
+            "seatSections": event.get("seatSections", []),
+            "defaultSeatCategory": event.get("defaultSeatCategory"),
+        }
+    return events
+
+
+def build_demo_purchase_seed(order_id_overrides=None):
+    order_id_overrides = order_id_overrides or {}
+    demo_state = load_demo_seed_data()
+    purchases = []
+    ticket_maps = []
+
+    for row in demo_state["orderDemoOrders"]:
+        order_id = order_id_overrides.get(row["purchaseId"], row["defaultOrderId"])
+        purchases.append(
+            {
+                "purchaseId": row["purchaseId"],
+                "orderIds": [order_id],
+                "ticketIds": [row["ticketId"]],
+                "userId": row["userId"],
+                "eventId": row["eventId"],
+                "quantity": row["quantity"],
+                "seatCategory": row["seatCategory"],
+                "status": row["purchaseStatus"],
+                "paymentChargeId": row["paymentChargeId"],
+                "paymentIntentId": row.get("paymentIntentId"),
+                "paymentStatus": row["purchaseStatus"],
+                "latestChargeId": row["paymentChargeId"],
+                "amountPaid": row["amountPaid"],
+                "currency": row["currency"],
+                "createdAt": row["createdAt"],
+                "updatedAt": row["updatedAt"],
+            }
+        )
+        ticket_maps.append(
+            {
+                "ticketId": row["ticketId"],
+                "purchaseId": row["purchaseId"],
+                "orderId": order_id,
+                "holdId": row["holdId"],
+                "userId": row["userId"],
+                "eventId": row["eventId"],
+                "eventName": row["eventName"],
+                "venue": row["venue"],
+                "date": row["date"],
+                "seatCategory": row["seatCategory"],
+                "status": "ACTIVE" if row["purchaseStatus"] == "SUCCESS" else row["purchaseStatus"],
+                "amountPaid": row["amountPaid"],
+                "currency": row["currency"],
+                "paymentIntentId": row.get("paymentIntentId"),
+                "paymentChargeId": row["paymentChargeId"],
+                "refundId": None,
+                "createdAt": row["createdAt"],
+                "updatedAt": row["updatedAt"],
+            }
+        )
+
+    return purchases, ticket_maps
+
+
+ORDER_ALIGNED_DEMO_EVENTS = build_order_aligned_demo_events()
 
 
 def utc_now_iso():
@@ -236,11 +165,11 @@ def normalize_seat_category(value):
     return str(value).strip().upper()
 
 
-def order_style_id(prefix, value):
+def order_api_int(value, field_name):
     text = str(value).strip()
     if re.fullmatch(r"\d+", text):
-        return f"{prefix}-{int(text):03d}"
-    return text
+        return int(text)
+    raise ValueError(f"OrderService expects integer {field_name}; got {text!r}")
 
 
 def normalize_order_status_from_ticket(status):
@@ -387,15 +316,13 @@ def send_purchase_confirmation_notification(payload):
 
 def issue_ticket(event_id):
     code, body = req_json("POST", f"{TICKET_SERVICE_URL}/tickets/issue", {"event_id": event_id})
-    if code in (200, 201) and body.get("ticket_id"):
+    if code in (200, 201) and body.get("ticket_id") is not None:
         return body["ticket_id"]
-    return f"LOCAL-{uuid.uuid4()}"
+    raise RuntimeError(f"Ticket issuance failed: {body}")
 
 
 def invalidate_ticket(ticket_id):
-    try:
-        uuid.UUID(str(ticket_id))
-    except ValueError:
+    if not re.fullmatch(r"\d+", str(ticket_id).strip()):
         return
     req_json("POST", f"{TICKET_SERVICE_URL}/tickets/{ticket_id}/invalidate")
 
@@ -514,14 +441,21 @@ def ensure_sqlite_columns(cur, table_name, columns):
             cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
 
-def seed_order_aligned_demo_data(conn):
+def reset_order_aligned_demo_data(conn, purchases=None, ticket_maps=None):
+    purchases = purchases or []
+    ticket_maps = ticket_maps or []
     cur = conn.cursor()
-    for purchase in ORDER_ALIGNED_DEMO_PURCHASES:
+    cur.execute("DELETE FROM checkout_sessions")
+    cur.execute("DELETE FROM ticket_map")
+    cur.execute("DELETE FROM purchases")
+
+    for purchase in purchases:
         cur.execute(
             """
-            INSERT OR IGNORE INTO purchases
-            (purchaseId, orderIds, ticketIds, userId, eventId, quantity, seatCategory, status, paymentChargeId, amountPaid, createdAt, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO purchases
+            (purchaseId, orderIds, ticketIds, userId, eventId, quantity, seatCategory, status, paymentChargeId,
+             paymentIntentId, paymentStatus, latestChargeId, amountPaid, currency, buyerName, buyerEmail, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 purchase["purchaseId"],
@@ -533,18 +467,25 @@ def seed_order_aligned_demo_data(conn):
                 purchase["seatCategory"],
                 purchase["status"],
                 purchase["paymentChargeId"],
+                purchase.get("paymentIntentId"),
+                purchase.get("paymentStatus"),
+                purchase.get("latestChargeId"),
                 purchase["amountPaid"],
+                purchase.get("currency"),
+                purchase.get("buyerName"),
+                purchase.get("buyerEmail"),
                 purchase["createdAt"],
                 purchase["updatedAt"],
             ),
         )
 
-    for ticket_map in ORDER_ALIGNED_DEMO_TICKET_MAPS:
+    for ticket_map in ticket_maps:
         cur.execute(
             """
-            INSERT OR IGNORE INTO ticket_map
-            (ticketId, purchaseId, orderId, holdId, userId, eventId, eventName, venue, date, seatCategory, status, createdAt, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO ticket_map
+            (ticketId, purchaseId, orderId, holdId, userId, eventId, eventName, venue, date, seatCategory,
+             status, amountPaid, currency, paymentIntentId, paymentChargeId, refundId, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ticket_map["ticketId"],
@@ -558,6 +499,11 @@ def seed_order_aligned_demo_data(conn):
                 ticket_map["date"],
                 ticket_map["seatCategory"],
                 ticket_map["status"],
+                ticket_map.get("amountPaid"),
+                ticket_map.get("currency"),
+                ticket_map.get("paymentIntentId"),
+                ticket_map.get("paymentChargeId"),
+                ticket_map.get("refundId"),
                 ticket_map["createdAt"],
                 ticket_map["updatedAt"],
             ),
@@ -569,7 +515,6 @@ def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = get_db()
     ensure_sqlite_schema(conn)
-    seed_order_aligned_demo_data(conn)
     conn.close()
 
 
@@ -670,9 +615,9 @@ def order_seat_category(event, seat_category):
 
 def create_external_order(user_id, ticket_id, event_id, event, seat_category, payment_charge_id, amount_paid):
     payload = {
-        "FanId": order_style_id("fan", user_id),
-        "TicketId": order_style_id("tkt", ticket_id),
-        "ConcertId": order_style_id("con", event_id),
+        "FanId": order_api_int(user_id, "FanId"),
+        "TicketId": order_api_int(ticket_id, "TicketId"),
+        "ConcertId": order_api_int(event_id, "ConcertId"),
         "PaymentChargeId": payment_charge_id,
         "SeatCategory": order_seat_category(event, seat_category),
         "AmountPaid": amount_paid,
@@ -751,6 +696,32 @@ def purchase_config():
     )
 
 
+@app.route("/purchase/admin/reset-demo", methods=["POST"])
+def reset_purchase_demo():
+    data = request.get_json(silent=True) or {}
+    purchases = data.get("purchases")
+    ticket_maps = data.get("ticketMaps")
+    if purchases is None or ticket_maps is None:
+        purchases, ticket_maps = build_demo_purchase_seed()
+
+    conn = get_db()
+    try:
+        reset_order_aligned_demo_data(conn, purchases=purchases, ticket_maps=ticket_maps)
+    finally:
+        conn.close()
+
+    return (
+        jsonify(
+            {
+                "status": "reset",
+                "purchaseCount": len(purchases),
+                "ticketMapCount": len(ticket_maps),
+            }
+        ),
+        200,
+    )
+
+
 @app.route("/purchase/checkout/session", methods=["POST"])
 def create_checkout_session():
     data = request.get_json() or {}
@@ -804,10 +775,10 @@ def create_checkout_session():
             receipt_email=buyer_email or user.get("email"),
             metadata={
                 "checkoutSessionId": checkout_session_id,
-                "eventId": order_style_id("con", event_id),
+                "eventId": str(event_id),
                 "seatCategory": order_seat_category(event, seat_category),
                 "quantity": quantity,
-                "userId": order_style_id("fan", user_id),
+                "userId": str(user_id),
             },
         )
 
@@ -1134,7 +1105,7 @@ def confirm_checkout_session():
                     "requested_by_customer",
                     {
                         "checkoutSessionId": checkout_session["checkoutSessionId"],
-                        "eventId": order_style_id("con", checkout_session["eventId"]),
+                        "eventId": str(checkout_session["eventId"]),
                     },
                 )
             except Exception:

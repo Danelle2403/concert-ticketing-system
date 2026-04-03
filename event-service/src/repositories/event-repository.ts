@@ -1,5 +1,4 @@
 import { PoolClient, QueryResultRow } from "pg";
-import { v4 as uuidv4 } from "uuid";
 
 import { ApiError } from "../errors";
 import { attachEventDetails, serializeEventSummary, serializeVenue } from "../serializers/event-serializer";
@@ -31,7 +30,7 @@ const buildVenue = (venue?: {
   country: normalizeText(venue?.country)
 });
 
-const ensureEventExists = async (db: Queryable, eventId: string): Promise<EventRecord> => {
+const ensureEventExists = async (db: Queryable, eventId: number): Promise<EventRecord> => {
   const event = await getEventById(db, eventId);
   if (!event) {
     throw new ApiError(404, "EVENT_NOT_FOUND", "Event not found");
@@ -41,17 +40,16 @@ const ensureEventExists = async (db: Queryable, eventId: string): Promise<EventR
 
 const insertPricingTiers = async (
   client: PoolClient,
-  eventId: string,
+  eventId: number,
   pricingTiers: CreateEventInput["pricingTiers"]
 ): Promise<void> => {
   for (const [index, tier] of pricingTiers.entries()) {
     await client.query(
       `
-        INSERT INTO pricing_tiers (id, event_id, code, name, price, currency, description, sort_order)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO pricing_tiers (event_id, code, name, price, currency, description, sort_order)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
       `,
       [
-        uuidv4(),
         eventId,
         tier.code.trim().toUpperCase(),
         tier.name.trim(),
@@ -66,17 +64,16 @@ const insertPricingTiers = async (
 
 const insertSeatSections = async (
   client: PoolClient,
-  eventId: string,
+  eventId: number,
   seatSections: CreateEventInput["seatSections"]
 ): Promise<void> => {
   for (const [index, section] of seatSections.entries()) {
     await client.query(
       `
-        INSERT INTO seat_sections (id, event_id, code, name, pricing_tier_code, capacity, metadata, sort_order)
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+        INSERT INTO seat_sections (event_id, code, name, pricing_tier_code, capacity, metadata, sort_order)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
       `,
       [
-        uuidv4(),
         eventId,
         section.code.trim().toUpperCase(),
         section.name.trim(),
@@ -91,7 +88,7 @@ const insertSeatSections = async (
 
 const replaceEventConfiguration = async (
   client: PoolClient,
-  eventId: string,
+  eventId: number,
   pricingTiers: CreateEventInput["pricingTiers"],
   seatSections: CreateEventInput["seatSections"]
 ): Promise<void> => {
@@ -109,7 +106,7 @@ const validateMergedSchedule = (startAt: Date, endAt: Date): void => {
 
 const mapDetails = async (db: Queryable, summary: EventSummary): Promise<EventRecord> => {
   const tiersResult = await db.query<{
-    id: string;
+    id: number;
     code: string;
     name: string;
     price: string;
@@ -127,7 +124,7 @@ const mapDetails = async (db: Queryable, summary: EventSummary): Promise<EventRe
   );
 
   const sectionsResult = await db.query<{
-    id: string;
+    id: number;
     code: string;
     name: string;
     pricing_tier_code: string;
@@ -145,7 +142,7 @@ const mapDetails = async (db: Queryable, summary: EventSummary): Promise<EventRe
   );
 
   const historyResult = await db.query<{
-    id: string;
+    id: number;
     reason: string | null;
     changed_by: string | null;
     changed_at: string;
@@ -225,7 +222,7 @@ const mapDetails = async (db: Queryable, summary: EventSummary): Promise<EventRe
   });
 };
 
-export const getEventById = async (db: Queryable, eventId: string): Promise<EventRecord | null> => {
+export const getEventById = async (db: Queryable, eventId: number): Promise<EventRecord | null> => {
   const result = await db.query<GenericRow>(
     `
       SELECT *
@@ -245,7 +242,7 @@ export const getEventById = async (db: Queryable, eventId: string): Promise<Even
 
 export const getEventSummary = async (
   db: Queryable,
-  eventId: string
+  eventId: number
 ): Promise<EventSummary | null> => {
   const result = await db.query<GenericRow>(
     `
@@ -327,16 +324,14 @@ export const createEvent = async (
   db: TransactionalQueryable,
   input: CreateEventInput
 ): Promise<EventRecord> => {
-  const eventId = uuidv4();
   const venue = buildVenue(input.venue);
   const status = input.status ?? "DRAFT";
   const now = new Date();
 
   return withTransaction(db, async (client) => {
-    await client.query(
+    const insertResult = await client.query<{ id: number }>(
       `
         INSERT INTO events (
-          id,
           manager_id,
           title,
           description,
@@ -353,10 +348,10 @@ export const createEvent = async (
           created_at,
           updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $14)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13, $13)
+        RETURNING id
       `,
       [
-        eventId,
         input.managerId,
         input.title.trim(),
         normalizeText(input.description) ?? "",
@@ -372,6 +367,10 @@ export const createEvent = async (
         now.toISOString()
       ]
     );
+    const eventId = insertResult.rows[0]?.id;
+    if (!eventId) {
+      throw new ApiError(500, "EVENT_CREATE_FAILED", "Unable to determine created event ID");
+    }
 
     await insertPricingTiers(client, eventId, input.pricingTiers);
     await insertSeatSections(client, eventId, input.seatSections);
@@ -386,7 +385,7 @@ export const createEvent = async (
 
 export const updateEvent = async (
   db: TransactionalQueryable,
-  eventId: string,
+  eventId: number,
   input: UpdateEventInput
 ): Promise<EventRecord> => {
   const currentEvent = await ensureEventExists(db, eventId);
@@ -493,7 +492,7 @@ export const updateEvent = async (
 
 export const rescheduleEvent = async (
   db: TransactionalQueryable,
-  eventId: string,
+  eventId: number,
   input: RescheduleEventInput
 ): Promise<EventRecord> => {
   const currentEvent = await ensureEventExists(db, eventId);
@@ -561,7 +560,6 @@ export const rescheduleEvent = async (
     await client.query(
       `
         INSERT INTO reschedule_history (
-          id,
           event_id,
           previous_start_at,
           previous_end_at,
@@ -579,10 +577,9 @@ export const rescheduleEvent = async (
           changed_by,
           changed_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       `,
       [
-        uuidv4(),
         eventId,
         currentEvent.startAt,
         currentEvent.endAt,
@@ -612,7 +609,7 @@ export const rescheduleEvent = async (
 
 export const cancelEvent = async (
   db: TransactionalQueryable,
-  eventId: string,
+  eventId: number,
   input: CancelEventInput
 ): Promise<EventRecord> => {
   const currentEvent = await ensureEventExists(db, eventId);
@@ -645,3 +642,80 @@ export const cancelEvent = async (
     return updatedEvent;
   });
 };
+
+export const resetDemoEvents = async (
+  db: TransactionalQueryable,
+  demoEvents: Array<{
+    id: number;
+    managerId: number;
+    title: string;
+    description: string;
+    status: EventRecord["status"];
+    startAt: string;
+    endAt: string;
+    venue: EventRecord["venue"];
+    changedBy?: string;
+    pricingTiers: CreateEventInput["pricingTiers"];
+    seatSections: CreateEventInput["seatSections"];
+  }>
+): Promise<void> =>
+  withTransaction(db, async (client) => {
+    await client.query(
+      "TRUNCATE TABLE reschedule_history, seat_sections, pricing_tiers, events RESTART IDENTITY CASCADE"
+    );
+
+    for (const event of demoEvents) {
+      const changedAt = event.startAt;
+      await client.query(
+        `
+          INSERT INTO events (
+            id,
+            manager_id,
+            title,
+            description,
+            start_at,
+            end_at,
+            status,
+            venue_name,
+            venue_address,
+            venue_city,
+            venue_country,
+            published_at,
+            cancelled_at,
+            changed_by,
+            changed_at,
+            created_at,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15, $15)
+        `,
+        [
+          event.id,
+          event.managerId,
+          event.title.trim(),
+          event.description.trim(),
+          event.startAt,
+          event.endAt,
+          event.status,
+          event.venue.name,
+          normalizeText(event.venue.address),
+          normalizeText(event.venue.city),
+          normalizeText(event.venue.country),
+          event.status === "PUBLISHED" ? event.startAt : null,
+          event.status === "CANCELLED" ? event.endAt : null,
+          normalizeText(event.changedBy),
+          changedAt
+        ]
+      );
+
+      await insertPricingTiers(client, event.id, event.pricingTiers);
+      await insertSeatSections(client, event.id, event.seatSections);
+    }
+
+    if (demoEvents.length > 0) {
+      const maxEventId = Math.max(...demoEvents.map((event) => event.id));
+      await client.query("SELECT setval(pg_get_serial_sequence('events', 'id'), $1, true)", [
+        maxEventId
+      ]);
+    }
+  });

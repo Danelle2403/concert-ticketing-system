@@ -42,6 +42,8 @@ services:
     restart: unless-stopped
     ports:
       - "5001:5000"
+    volumes:
+      - ./demo:/demo:ro
     environment:
       - DB_HOST=user-db
       - DB_USER=root
@@ -80,6 +82,8 @@ services:
     restart: unless-stopped
     ports:
       - "5004:5000"
+    volumes:
+      - ./demo:/demo:ro
     environment:
       - DB_HOST=seat-inventory-db
       - DB_USER=root
@@ -119,6 +123,8 @@ services:
     build: ./event-service
     ports:
       - "5003:5000"
+    volumes:
+      - ./demo:/demo:ro
     environment:
       - DATABASE_URL=postgresql://event_user:event_password@event-db:5432/event_service_db
     depends_on:
@@ -150,6 +156,8 @@ services:
     restart: unless-stopped
     ports:
       - "5002:5000"
+    volumes:
+      - ./demo:/demo:ro
     environment:
       - DATABASE_URL=postgresql://ticket_user:ticket_password@ticket-atomic-db:5432/ticket_atomic_db
       - PORT=5000
@@ -196,6 +204,7 @@ services:
       - FLASK_USE_RELOADER=0
     volumes:
       - purchase-data:/data
+      - ./demo:/demo:ro
     depends_on:
       - user-service
       - event-service

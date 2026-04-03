@@ -95,10 +95,9 @@ Direct service ports still exist for internal service-to-service traffic, health
 | Notification Service | http://localhost:5013 |
 | Payment Service | http://localhost:5014 |
 
-### 4. Seed demo users/events
+### 4. Reset and seed demo state
 ```bash
-curl -X POST http://localhost:5001/user/seed
-curl -X POST http://localhost:5004/inventory/admin/seed-order-demo
+python3 scripts/reset_local_demo_state.py
 ```
 
 Default demo users:
@@ -106,7 +105,13 @@ Default demo users:
 - Fan login `User ID = 2`
 - Manager login `User ID = 99`
 
-The extra seat inventory seed keeps the local demo data aligned with the external OrderService rows used by the purchase/refund wrappers.
+The reset script rebuilds local service state from the shared fixture at `demo/local_demo_state.json`, creates fresh OrderService rows, and then repoints Purchase Composite to those new order ids.
+
+If you only want the smaller order-aligned seed without wiping everything, the legacy internal endpoints still exist:
+```bash
+curl -X POST http://localhost:5001/user/seed
+curl -X POST http://localhost:5004/inventory/admin/seed-order-demo
+```
 
 ### 5. Stop all services
 ```bash

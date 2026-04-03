@@ -8,7 +8,7 @@ Manager-only Flask orchestration service for creating, editing, and cancelling e
 - creates or edits event metadata through Event Service
 - cancels events through Event Service and triggers refund-composite for event-wide Stripe refunds
 - relies on `managerId` stored in Event Service for ownership checks and manager event listing
-- bootstraps Seat Inventory with the Event Service UUID by aggregating `seatSections[].capacity` per pricing tier
+- bootstraps Seat Inventory with the Event Service integer event ID by aggregating `seatSections[].capacity` per pricing tier
 - validates existing Seat Inventory totals before allowing seat-configuration edits
 - publishes `event.updated` and `event.cancelled` messages to RabbitMQ for the notification wrapper
 - writes composite audit entries to container stdout as structured JSON

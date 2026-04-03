@@ -70,6 +70,66 @@ class FakeSeatCursor:
             self.rowcount = 1
             return
 
+        if sql.startswith("INSERT INTO seat_holds") and len(params) == 11:
+            (
+                hold_id,
+                event_id,
+                seat_category,
+                quantity,
+                status,
+                expires_at,
+                confirmed_at,
+                released_at,
+                release_reason,
+                created_at,
+                updated_at,
+            ) = params
+            holds[str(hold_id)] = {
+                "holdId": str(hold_id),
+                "eventId": str(event_id),
+                "seatCategory": str(seat_category),
+                "quantity": int(quantity),
+                "status": status,
+                "expiresAt": expires_at,
+                "confirmedAt": confirmed_at,
+                "releasedAt": released_at,
+                "releaseReason": release_reason,
+                "createdAt": created_at,
+                "updatedAt": updated_at,
+            }
+            self.rowcount = 1
+            return
+
+        if sql.startswith("DELETE FROM seat_holds"):
+            if "WHERE eventId IN (" in sql:
+                target_event_ids = {str(value) for value in params}
+                before = len(holds)
+                self.db.holds = {
+                    hold_id: row
+                    for hold_id, row in holds.items()
+                    if row["eventId"] not in target_event_ids
+                }
+                self.rowcount = before - len(self.db.holds)
+                return
+
+            self.rowcount = len(holds)
+            self.db.holds = {}
+            return
+
+        if sql.startswith("DELETE FROM seat_inventory"):
+            if "WHERE eventId IN (" in sql:
+                target_event_ids = {str(value) for value in params}
+                before = len(inventory)
+                self.db.inventory = {
+                    key: row for key, row in inventory.items() if key[0] not in target_event_ids
+                }
+                self.rowcount = before - len(self.db.inventory)
+                return
+
+            self.rowcount = len(inventory)
+            self.db.inventory = {}
+            return
+
         if sql.startswith("SELECT eventId, seatCategory, totalSeats, availableSeats, updatedAt FROM seat_inventory ORDER BY eventId, seatCategory"):
             self.results = [
                 deepcopy(inventory[key])
@@ -311,3 +371,22 @@ def test_admin_create_bootstraps_inventory_for_new_event_and_blocks_recreate(cli
     )
     assert duplicate.status_code == 409
     assert duplicate.get_json()["eventId"] == "evt-runtime-123"
+
+
+def test_reset_demo_inventory_rebuilds_full_fixture_and_removes_stray_rows(client):
+    test_client, db = client
+
+    db.inventory[("evt-runtime-123", "VIP")] = {
+        "eventId": "evt-runtime-123",
+        "seatCategory": "VIP",
+        "totalSeats": 20,
+        "availableSeats": 18,
+        "updatedAt": timestamp_string(),
+    }
+
+    response = test_client.post("/inventory/admin/reset-demo")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "seeded", "inventoryRows": 10, "holdRows": 4}
+    assert ("evt-runtime-123", "VIP") not in db.inventory
+    assert sorted({event_id for event_id, _seat_category in db.inventory}) == ["1", "1001", "1002", "2", "789"]

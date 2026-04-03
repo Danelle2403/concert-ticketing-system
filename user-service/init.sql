@@ -34,32 +34,3 @@ CREATE TABLE IF NOT EXISTS managed_events (
     INDEX idx_managed_events_managerId (managerId),
     INDEX idx_managed_events_eventId (eventId)
 );
-
-INSERT INTO users (id, name, email, role)
-VALUES
-  (1, 'Alice Fan', 'fan@example.com', 'fan'),
-  (2, 'Noah Fan', 'fan2@example.com', 'fan'),
-  (3, 'Chloe Fan', 'fan3@example.com', 'fan'),
-  (99, 'Maya Manager', 'manager@example.com', 'manager'),
-  (123, 'Legacy Fan', 'legacyfan@example.com', 'fan')
-ON DUPLICATE KEY UPDATE
-  name = VALUES(name),
-  email = VALUES(email),
-  role = VALUES(role);
-
-INSERT INTO managed_events (managerId, eventId, name, venue, date, price, status)
-VALUES
-  (99, 'EVT1001', 'The Midnight World Tour', 'Marina Bay Sands, Singapore', '2026-08-15', 88.00, 'active'),
-  (99, 'EVT1002', 'Neon Bloom Live', 'Singapore Indoor Stadium', '2026-09-22', 98.00, 'active'),
-  (99, '1', 'Pulse Arena Nights', 'Capitol Theatre, Singapore', '2026-04-18', 80.00, 'active'),
-  (99, '2', 'Skyline VIP Session', 'Singapore Indoor Stadium', '2026-05-02', 200.00, 'active'),
-  (99, '789', 'Harbour Lights Reunion', 'The Star Theatre, Singapore', '2026-03-10', 150.00, 'cancelled')
-;
-
-INSERT INTO user_tickets (userId, ticketId, eventId, eventName, venue, date, status)
-VALUES
-  (123, '456', '789', 'Harbour Lights Reunion', 'The Star Theatre, Singapore', '2026-03-10', 'refunded'),
-  (1, '1', '1', 'Pulse Arena Nights', 'Capitol Theatre, Singapore', '2026-04-18', 'cancelled'),
-  (2, '2', '1', 'Pulse Arena Nights', 'Capitol Theatre, Singapore', '2026-04-18', 'active'),
-  (3, '3', '2', 'Skyline VIP Session', 'Singapore Indoor Stadium', '2026-05-02', 'active')
-;

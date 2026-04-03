@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
+import json
 import os
+from pathlib import Path
 import re
 import time
 import uuid
@@ -16,66 +18,27 @@ MAX_HOLD_TTL_SECONDS = int(os.environ.get("MAX_HOLD_TTL_SECONDS", "1800"))
 DB_CONNECT_RETRIES = int(os.environ.get("DB_CONNECT_RETRIES", "15"))
 DB_CONNECT_RETRY_DELAY_SECONDS = float(os.environ.get("DB_CONNECT_RETRY_DELAY_SECONDS", "1"))
 DB_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5"))
-ORDER_ALIGNED_DEMO_INVENTORY = [
-    {"eventId": "1", "seatCategory": "VIP", "totalSeats": 40, "availableSeats": 40},
-    {"eventId": "1", "seatCategory": "STANDARD", "totalSeats": 150, "availableSeats": 149},
-    {"eventId": "2", "seatCategory": "VIP", "totalSeats": 60, "availableSeats": 59},
-    {"eventId": "789", "seatCategory": "VIP", "totalSeats": 80, "availableSeats": 80},
-]
-ORDER_ALIGNED_DEMO_HOLDS = [
-    {
-        "holdId": "11111111-1111-1111-1111-111111111111",
-        "eventId": "789",
-        "seatCategory": "VIP",
-        "quantity": 1,
-        "status": "RELEASED",
-        "expiresAt": "2026-03-27 05:47:46",
-        "confirmedAt": "2026-03-27 05:42:46",
-        "releasedAt": "2026-03-27 21:25:49",
-        "releaseReason": "REFUND",
-        "createdAt": "2026-03-27 05:42:46",
-        "updatedAt": "2026-03-27 21:25:49",
-    },
-    {
-        "holdId": "22222222-2222-2222-2222-222222222222",
-        "eventId": "1",
-        "seatCategory": "VIP",
-        "quantity": 1,
-        "status": "RELEASED",
-        "expiresAt": "2026-03-27 21:20:59",
-        "confirmedAt": "2026-03-27 21:15:59",
-        "releasedAt": "2026-03-27 21:26:14",
-        "releaseReason": "ORDER_CANCELLED",
-        "createdAt": "2026-03-27 21:15:59",
-        "updatedAt": "2026-03-27 21:26:14",
-    },
-    {
-        "holdId": "33333333-3333-3333-3333-333333333333",
-        "eventId": "1",
-        "seatCategory": "STANDARD",
-        "quantity": 1,
-        "status": "CONFIRMED",
-        "expiresAt": "2026-12-31 23:59:59",
-        "confirmedAt": "2026-03-27 21:16:23",
-        "releasedAt": None,
-        "releaseReason": None,
-        "createdAt": "2026-03-27 21:16:23",
-        "updatedAt": "2026-03-27 21:16:23",
-    },
-    {
-        "holdId": "44444444-4444-4444-4444-444444444444",
-        "eventId": "2",
-        "seatCategory": "VIP",
-        "quantity": 1,
-        "status": "CONFIRMED",
-        "expiresAt": "2026-12-31 23:59:59",
-        "confirmedAt": "2026-03-27 21:16:49",
-        "releasedAt": None,
-        "releaseReason": None,
-        "createdAt": "2026-03-27 21:16:49",
-        "updatedAt": "2026-03-27 21:16:49",
-    },
-]
+DEMO_STATE_PATH = Path(__file__).resolve().parents[1] / "demo" / "local_demo_state.json"
+
+
+def load_demo_seed_data():
+    with DEMO_STATE_PATH.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def build_demo_inventory_seed(full_reset=False):
+    demo_state = load_demo_seed_data()
+    if full_reset:
+        return demo_state["seatInventory"], demo_state["seatHolds"]
+
+    order_event_ids = {str(row["eventId"]) for row in demo_state["orderDemoOrders"]}
+    inventory_rows = [
+        row for row in demo_state["seatInventory"] if str(row["eventId"]) in order_event_ids
+    ]
+    hold_rows = [
+        row for row in demo_state["seatHolds"] if str(row["eventId"]) in order_event_ids
+    ]
+    return inventory_rows, hold_rows
 
 
 def get_db():
@@ -194,23 +157,37 @@ def normalize_seat_category(value):
     return str(value).strip().upper()
 
 
-def seed_order_aligned_demo_inventory():
+def seed_order_aligned_demo_inventory(full_reset=False):
     db = None
     try:
+        inventory_rows, hold_rows = build_demo_inventory_seed(full_reset=full_reset)
         db = get_db()
         cursor = db.cursor(dictionary=True)
         db.start_transaction()
 
-        for row in ORDER_ALIGNED_DEMO_INVENTORY:
+        if full_reset:
+            cursor.execute("DELETE FROM seat_holds")
+            cursor.execute("DELETE FROM seat_inventory")
+        else:
+            demo_event_ids = sorted(
+                {str(row["eventId"]) for row in inventory_rows}
+                | {str(row["eventId"]) for row in hold_rows}
+            )
+            placeholders = ", ".join(["%s"] * len(demo_event_ids))
+            cursor.execute(
+                f"DELETE FROM seat_holds WHERE eventId IN ({placeholders})", tuple(demo_event_ids)
+            )
+            cursor.execute(
+                f"DELETE FROM seat_inventory WHERE eventId IN ({placeholders})",
+                tuple(demo_event_ids),
+            )
+
+        for row in inventory_rows:
             cursor.execute(
                 """
                 INSERT INTO seat_inventory
                 (eventId, seatCategory, totalSeats, availableSeats, createdAt, updatedAt)
                 VALUES (%s, %s, %s, %s, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-                ON DUPLICATE KEY UPDATE
-                    totalSeats = VALUES(totalSeats),
-                    availableSeats = VALUES(availableSeats),
-                    updatedAt = UTC_TIMESTAMP()
                 """,
                 (
                     row["eventId"],
@@ -220,22 +197,12 @@ def seed_order_aligned_demo_inventory():
                 ),
             )
 
-        for hold in ORDER_ALIGNED_DEMO_HOLDS:
+        for hold in hold_rows:
             cursor.execute(
                 """
                 INSERT INTO seat_holds
                 (holdId, eventId, seatCategory, quantity, status, expiresAt, confirmedAt, releasedAt, releaseReason, createdAt, updatedAt)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                    eventId = VALUES(eventId),
-                    seatCategory = VALUES(seatCategory),
-                    quantity = VALUES(quantity),
-                    status = VALUES(status),
-                    expiresAt = VALUES(expiresAt),
-                    confirmedAt = VALUES(confirmedAt),
-                    releasedAt = VALUES(releasedAt),
-                    releaseReason = VALUES(releaseReason),
-                    updatedAt = VALUES(updatedAt)
                 """,
                 (
                     hold["holdId"],
@@ -253,7 +220,7 @@ def seed_order_aligned_demo_inventory():
             )
 
         db.commit()
-        return {"status": "seeded", "inventoryRows": len(ORDER_ALIGNED_DEMO_INVENTORY), "holdRows": len(ORDER_ALIGNED_DEMO_HOLDS)}, 200
+        return {"status": "seeded", "inventoryRows": len(inventory_rows), "holdRows": len(hold_rows)}, 200
     except Exception as e:
         if db:
             db.rollback()
@@ -523,7 +490,13 @@ def create_inventory_for_event():
 
 @app.route("/inventory/admin/seed-order-demo", methods=["POST"])
 def seed_order_demo_inventory():
-    payload, status = seed_order_aligned_demo_inventory()
+    payload, status = seed_order_aligned_demo_inventory(full_reset=False)
+    return jsonify(payload), status
+
+
+@app.route("/inventory/admin/reset-demo", methods=["POST"])
+def reset_demo_inventory():
+    payload, status = seed_order_aligned_demo_inventory(full_reset=True)
     return jsonify(payload), status
 
 
