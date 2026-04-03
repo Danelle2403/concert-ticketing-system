@@ -22,6 +22,9 @@
             <a href="request-refund.html" class="active">My Tickets</a>
             <span id="nav-user"></span>
         </div>
+        <div class="nav-actions">
+            <button type="button" id="nav-logout" class="btn-nav hidden" onclick="logoutUser('login.html')">Logout</button>
+        </div>
     </nav>
 
     <main class="container">
@@ -76,7 +79,7 @@
     <script>
 
         // Check login
-        const user = JSON.parse(sessionStorage.getItem("user"));
+        const user = getStoredUser();
         const urlParams = new URLSearchParams(window.location.search);
         let selectedTicketId = null;
         let selectedRefundSource = "customer_request";
@@ -86,6 +89,7 @@
             document.getElementById("not-logged-in").classList.remove("hidden");
         } else {
             document.getElementById("nav-user").textContent = `👤 ${user.name}`;
+            document.getElementById("nav-logout").classList.remove("hidden");
             loadTickets();
         }
 

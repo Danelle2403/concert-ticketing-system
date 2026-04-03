@@ -43,6 +43,29 @@ async function apiRequest(path, options = {}) {
     return payload;
 }
 
+function getStoredUser() {
+    try {
+        return JSON.parse(sessionStorage.getItem("user"));
+    } catch (_error) {
+        return null;
+    }
+}
+
+function storeUser(user) {
+    sessionStorage.setItem("user", JSON.stringify(user));
+}
+
+function clearStoredSession() {
+    ["user", "selectedEvent", "lastPurchase"].forEach((key) => {
+        sessionStorage.removeItem(key);
+    });
+}
+
+function logoutUser(redirectTo = "login.html") {
+    clearStoredSession();
+    window.location.href = redirectTo;
+}
+
 function formatVenueLabel(venue) {
     if (!venue || typeof venue !== "object") {
         return "Venue TBC";
@@ -133,7 +156,9 @@ async function getManagingEvents(userId) {
         }
     });
 
-    return (payload.data || []).map(normalizeEventRecord);
+    return ((payload?.data?.events) || []).map((eventRow) =>
+        normalizeEventRecord(eventRow.eventSummary || eventRow)
+    );
 }
 
 // Event Service via Kong

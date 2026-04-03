@@ -21,6 +21,9 @@
             <a href="request-refund.html">My Tickets</a>
             <span id="nav-user"></span>
         </div>
+        <div class="nav-actions">
+            <button type="button" id="nav-logout" class="btn-nav hidden" onclick="logoutUser('login.html')">Logout</button>
+        </div>
     </nav>
 
     <main class="container form-container">
@@ -102,7 +105,7 @@
         } = window.formValidation;
         bindLiveValidation(document);
 
-        const user = JSON.parse(sessionStorage.getItem("user"));
+        const user = getStoredUser();
         const event = JSON.parse(sessionStorage.getItem("selectedEvent"));
 
         let paymentConfig = null;
@@ -118,6 +121,7 @@
 
         if (user) {
             document.getElementById("nav-user").textContent = `👤 ${user.name}`;
+            document.getElementById("nav-logout").classList.remove("hidden");
             document.getElementById("buyer-name").value = user.name || "";
             document.getElementById("buyer-email").value = user.email || "";
         }

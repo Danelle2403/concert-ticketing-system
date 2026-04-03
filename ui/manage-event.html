@@ -24,6 +24,7 @@
         <div class="nav-actions">
             <a href="login.html" id="nav-login" class="btn-nav">Login</a>
             <span id="nav-user" class="hidden nav-user-label"></span>
+            <button type="button" id="nav-logout" class="btn-nav hidden" onclick="logoutUser('login.html')">Logout</button>
         </div>
     </nav>
 
@@ -239,7 +240,7 @@
         } = window.formValidation;
         bindLiveValidation(document);
 
-        const managerUser = JSON.parse(sessionStorage.getItem("user"));
+        const managerUser = getStoredUser();
         const managerId = managerUser?.userId || managerUser?.id;
         let managedEvents = [];
         let editingEventId = null;
@@ -794,6 +795,7 @@
         } else {
             document.getElementById("nav-login").classList.add("hidden");
             document.getElementById("nav-user").classList.remove("hidden");
+            document.getElementById("nav-logout").classList.remove("hidden");
             document.getElementById("nav-user").textContent = managerUser.name;
             document.getElementById("manager-view").classList.remove("hidden");
             resetCreateForm();

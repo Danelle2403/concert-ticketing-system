@@ -25,6 +25,7 @@
                 </svg>
                 Back to Home
             </a>
+            <button type="button" id="nav-logout" class="btn-nav hidden" onclick="logoutUser('login.html')">Logout</button>
         </div>
     </nav>
 
@@ -189,7 +190,7 @@
             try {
                 const data = await loginUser(userId);
                 if (data && data.userId) {
-                    sessionStorage.setItem("user", JSON.stringify(data));
+                    storeUser(data);
                     window.location.href = data.role === "manager" ? "manage-event.html" : "index.html";
                 } else {
                     setFieldError(userIdField, "We could not find that user ID.");
@@ -227,7 +228,7 @@
             try {
                 const data = await registerUser({ name, email, role });
                 if (data && data.userId) {
-                    sessionStorage.setItem("user", JSON.stringify(data));
+                    storeUser(data);
                     document.getElementById("register-success").classList.remove("hidden");
                     setTimeout(() => { window.location.href = "index.html"; }, 1500);
                 } else {
@@ -251,6 +252,10 @@
             event.preventDefault();
             handleRegister();
         });
+
+        if (getStoredUser()) {
+            document.getElementById("nav-logout").classList.remove("hidden");
+        }
 
     </script>
 

@@ -58,6 +58,7 @@
         <div class="nav-actions">
             <a href="login.html" id="nav-login" class="btn-nav">Login</a>
             <span id="nav-user" class="hidden nav-user-label"></span>
+            <button type="button" id="nav-logout" class="btn-nav hidden" onclick="logoutUser('login.html')">Logout</button>
         </div>
     </nav>
 
@@ -459,10 +460,11 @@
         document.querySelectorAll(".animate-on-scroll").forEach(el => observer.observe(el));
 
         // ── USER CHECK ────────────────────────────────────────
-        const user = JSON.parse(sessionStorage.getItem("user"));
+        const user = getStoredUser();
         if (user) {
             document.getElementById("nav-login").classList.add("hidden");
             document.getElementById("nav-user").classList.remove("hidden");
+            document.getElementById("nav-logout").classList.remove("hidden");
             document.getElementById("nav-user").textContent = user.name;
         }
 
