@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import requests
 
 import event_bus
 import service_clients
@@ -42,6 +43,57 @@ def build_error(status, code, message, details=None):
 
 def utc_now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def get_bearer_authorization():
+    header = str(request.headers.get("Authorization") or "").strip()
+    if not header.lower().startswith("bearer "):
+        return None
+    return header
+
+
+def authenticate_manager_request(user_service_url, timeout):
+    authorization = get_bearer_authorization()
+    if not authorization:
+        raise service_clients.ServiceError(401, "AUTH_REQUIRED", "Authentication is required")
+
+    try:
+        response = requests.request(
+            "GET",
+            f"{user_service_url.rstrip('/')}/auth/me",
+            timeout=timeout,
+            headers={"Authorization": authorization},
+        )
+    except requests.RequestException as error:
+        raise service_clients.ServiceError(
+            502,
+            "AUTH_SERVICE_UNAVAILABLE",
+            "Authentication lookup failed",
+            {"error": str(error)},
+        ) from error
+
+    try:
+        body = response.json()
+    except Exception:
+        body = {"raw": response.text}
+
+    if response.status_code != 200:
+        raise service_clients.ServiceError(
+            401,
+            "AUTH_REQUIRED",
+            "Authentication is required",
+            body,
+        )
+
+    user = service_clients.unwrap_data(body)
+    if user.get("role") != "manager":
+        raise service_clients.ServiceError(
+            403,
+            "MANAGER_ACCESS_DENIED",
+            "Only manager users can access this composite service",
+            user,
+        )
+    return user
 
 
 def write_audit_log(action, status, request_payload, response_payload, event_id=None, manager_id=None):
@@ -303,9 +355,17 @@ def create_app(test_config=None):
         warnings = []
 
         try:
-            manager_id = extract_manager_id(data)
+            manager = authenticate_manager_request(
+                app.config["USER_SERVICE_URL"],
+                app.config["REQUEST_TIMEOUT_SECONDS"],
+            )
+            manager_id = int(manager["userId"])
+            if data.get("managerId") is not None and extract_manager_id(data) != manager_id:
+                return build_error(403, "MANAGER_NOT_OWNER", "Authenticated manager does not match managerId.")
         except ValueError as error:
             return build_error(400, "VALIDATION_ERROR", str(error))
+        except service_clients.ServiceError as error:
+            return build_error(error.status_code, error.code, error.message, error.payload)
 
         requested_inventory_event_id = normalize_inventory_event_id(data.get("seatInventoryEventId"))
         event_payload = ensure_changed_by(build_event_payload(data, apply_defaults=True), manager_id)
@@ -335,12 +395,6 @@ def create_app(test_config=None):
             )
 
         try:
-            manager = service_clients.validate_manager_access(
-                app.config["USER_SERVICE_URL"],
-                manager_id,
-                app.config["REQUEST_TIMEOUT_SECONDS"],
-            )
-
             event = service_clients.create_event_record(
                 app.config["EVENT_SERVICE_URL"],
                 event_payload,
@@ -419,20 +473,22 @@ def create_app(test_config=None):
         data = request.get_json(silent=True) or {}
 
         try:
-            manager_id = extract_manager_id(data)
+            manager = authenticate_manager_request(
+                app.config["USER_SERVICE_URL"],
+                app.config["REQUEST_TIMEOUT_SECONDS"],
+            )
+            manager_id = int(manager["userId"])
+            if data.get("managerId") is not None and extract_manager_id(data) != manager_id:
+                return build_error(403, "MANAGER_NOT_OWNER", "Authenticated manager does not match managerId.")
         except ValueError as error:
             return build_error(400, "VALIDATION_ERROR", str(error))
+        except service_clients.ServiceError as error:
+            return build_error(error.status_code, error.code, error.message, error.payload)
 
         event_payload = ensure_changed_by(build_event_payload(data, apply_defaults=False), manager_id)
         warnings = []
 
         try:
-            manager = service_clients.validate_manager_access(
-                app.config["USER_SERVICE_URL"],
-                manager_id,
-                app.config["REQUEST_TIMEOUT_SECONDS"],
-            )
-
             current_event = service_clients.get_event_record(
                 app.config["EVENT_SERVICE_URL"],
                 event_id,
@@ -577,20 +633,22 @@ def create_app(test_config=None):
         data = request.get_json(silent=True) or {}
 
         try:
-            manager_id = extract_manager_id(data)
+            manager = authenticate_manager_request(
+                app.config["USER_SERVICE_URL"],
+                app.config["REQUEST_TIMEOUT_SECONDS"],
+            )
+            manager_id = int(manager["userId"])
+            if data.get("managerId") is not None and extract_manager_id(data) != manager_id:
+                return build_error(403, "MANAGER_NOT_OWNER", "Authenticated manager does not match managerId.")
         except ValueError as error:
             return build_error(400, "VALIDATION_ERROR", str(error))
+        except service_clients.ServiceError as error:
+            return build_error(error.status_code, error.code, error.message, error.payload)
 
         cancel_payload = ensure_changed_by({"reason": data.get("reason")}, manager_id)
         warnings = []
 
         try:
-            manager = service_clients.validate_manager_access(
-                app.config["USER_SERVICE_URL"],
-                manager_id,
-                app.config["REQUEST_TIMEOUT_SECONDS"],
-            )
-
             current_event = service_clients.get_event_record(
                 app.config["EVENT_SERVICE_URL"],
                 event_id,
@@ -702,23 +760,22 @@ def create_app(test_config=None):
 
     @app.route("/manager/events", methods=["GET"])
     def list_manager_event_links():
-        manager_id_raw = request.args.get("managerId")
         try:
-            manager_id = int(manager_id_raw)
-        except (TypeError, ValueError):
-            return build_error(400, "VALIDATION_ERROR", "managerId query parameter is required")
-
-        try:
-            manager = service_clients.validate_manager_access(
+            manager = authenticate_manager_request(
                 app.config["USER_SERVICE_URL"],
-                manager_id,
                 app.config["REQUEST_TIMEOUT_SECONDS"],
             )
+            manager_id = int(manager["userId"])
+            manager_id_raw = request.args.get("managerId")
+            if manager_id_raw is not None and int(manager_id_raw) != manager_id:
+                return build_error(403, "MANAGER_NOT_OWNER", "Authenticated manager does not match managerId.")
             events = service_clients.list_events_for_manager(
                 app.config["EVENT_SERVICE_URL"],
                 manager_id,
                 app.config["REQUEST_TIMEOUT_SECONDS"],
             )
+        except ValueError:
+            return build_error(400, "VALIDATION_ERROR", "managerId query parameter must be an integer")
         except service_clients.ServiceError as error:
             return build_error(error.status_code, error.code, error.message, error.payload)
 

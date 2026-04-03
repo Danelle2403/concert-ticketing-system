@@ -8,6 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app as user_app
 
+INTERNAL_HEADERS = {"X-Internal-Service-Token": user_app.INTERNAL_SERVICE_TOKEN}
+
 DEMO_STATE = user_app.load_demo_seed_data()
 DEMO_USERS = [
     {
@@ -354,7 +356,7 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
         "role": "fan",
     }]
 
-    response = test_client.post("/user/seed")
+    response = test_client.post("/user/seed", headers=INTERNAL_HEADERS)
 
     assert response.status_code == 200
     assert response.get_json() == {
@@ -364,7 +366,10 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
         "ticketCount": len(DEMO_USER_TICKETS),
     }
 
-    active_event_tickets = test_client.get("/user/tickets/by-event/con-001?status=active")
+    active_event_tickets = test_client.get(
+        "/user/tickets/by-event/con-001?status=active",
+        headers=INTERNAL_HEADERS,
+    )
     assert active_event_tickets.status_code == 200
     assert active_event_tickets.get_json()["tickets"] == [
         {
@@ -379,7 +384,7 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
         }
     ]
 
-    managed = test_client.get("/user/managing?userId=99")
+    managed = test_client.get("/user/managing?userId=99", headers=INTERNAL_HEADERS)
     assert managed.status_code == 200
     assert {row["eventId"] for row in managed.get_json()["events"]} == {
         "1001",
@@ -389,7 +394,7 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
         "789",
     }
 
-    manager = test_client.get("/user/99")
+    manager = test_client.get("/user/99", headers=INTERNAL_HEADERS)
     assert manager.status_code == 200
     assert manager.get_json()["role"] == "manager"
 
@@ -408,6 +413,7 @@ def test_ticket_upsert_and_managed_event_cancel_normalize_prefixed_ids(client):
             "date": "2026-04-18",
             "status": "active",
         },
+        headers=INTERNAL_HEADERS,
     )
 
     assert response.status_code == 201
@@ -415,11 +421,11 @@ def test_ticket_upsert_and_managed_event_cancel_normalize_prefixed_ids(client):
     assert response.get_json()["ticketId"] == "900"
     assert response.get_json()["eventId"] == "1"
 
-    lookup = test_client.get("/user/ticket/tkt-900")
+    lookup = test_client.get("/user/ticket/tkt-900", headers=INTERNAL_HEADERS)
     assert lookup.status_code == 200
     assert lookup.get_json()["ticketId"] == "900"
 
-    cancel = test_client.post("/user/managed/con-001/cancel")
+    cancel = test_client.post("/user/managed/con-001/cancel", headers=INTERNAL_HEADERS)
     assert cancel.status_code == 200
     assert cancel.get_json()["eventId"] == "1"
     assert cancel.get_json()["status"] == "cancelled"
@@ -490,3 +496,13 @@ def test_auth_me_rejects_missing_or_invalid_token(client):
 
     assert missing.status_code == 401
     assert invalid.status_code == 401
+
+
+def test_internal_user_routes_require_internal_service_token(client):
+    test_client, _db = client
+
+    users_response = test_client.get("/users")
+    seed_response = test_client.post("/user/seed")
+
+    assert users_response.status_code == 403
+    assert seed_response.status_code == 403

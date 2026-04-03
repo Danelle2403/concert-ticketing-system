@@ -18,6 +18,9 @@ DB_CONNECT_RETRY_DELAY_SECONDS = float(os.environ.get("DB_CONNECT_RETRY_DELAY_SE
 DB_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5"))
 AUTH_TOKEN_MAX_AGE_SECONDS = int(os.environ.get("AUTH_TOKEN_MAX_AGE_SECONDS", "604800"))
 AUTH_TOKEN_SALT = "concert-hub-auth"
+INTERNAL_SERVICE_TOKEN = os.environ.get(
+    "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
+)
 DEMO_STATE_PATH = Path(__file__).resolve().parents[1] / "demo" / "local_demo_state.json"
 _user_auth_schema_checked = False
 
@@ -156,6 +159,35 @@ def authenticate_request():
             db.close()
 
 
+def has_internal_service_access():
+    provided = str(request.headers.get("X-Internal-Service-Token") or "")
+    if not provided:
+        return False
+    return secrets.compare_digest(provided, INTERNAL_SERVICE_TOKEN)
+
+
+def require_internal_service_access():
+    if has_internal_service_access():
+        return None
+    return jsonify({"error": "Forbidden"}), 403
+
+
+def require_authenticated_user():
+    user = authenticate_request()
+    if not user:
+        return None, (jsonify({"error": "Unauthorized"}), 401)
+    return user, None
+
+
+def require_authenticated_manager():
+    user, error_response = require_authenticated_user()
+    if error_response:
+        return None, error_response
+    if user.get("role") != "manager":
+        return None, (jsonify({"error": "Manager access required"}), 403)
+    return user, None
+
+
 # ── DATABASE CONNECTION ───────────────────────────────────────
 def get_db():
     last_error = None
@@ -272,6 +304,9 @@ def health():
 def get_all_users():
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         db = connect_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute("SELECT * FROM users")
@@ -291,6 +326,9 @@ def get_all_users():
 def get_user(userId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         user_id = parse_int(userId, "userId")
 
         db = connect_db()
@@ -388,6 +426,9 @@ def auth_me():
 def create_user():
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         data = request.get_json() or {}
         name = str(data.get("name") or "").strip()
         email = normalize_email(data.get("email"))
@@ -533,12 +574,18 @@ def reset_demo_state(full_reset=False):
 
 @app.route("/user/seed", methods=["POST"])
 def seed_defaults():
+    internal_error = require_internal_service_access()
+    if internal_error:
+        return internal_error
     payload, status = reset_demo_state(full_reset=False)
     return jsonify(payload), status
 
 
 @app.route("/user/admin/reset-demo", methods=["POST"])
 def reset_demo_defaults():
+    internal_error = require_internal_service_access()
+    if internal_error:
+        return internal_error
     payload, status = reset_demo_state(full_reset=True)
     return jsonify(payload), status
 
@@ -548,11 +595,21 @@ def reset_demo_defaults():
 def get_user_events():
     db = None
     try:
-        user_id_raw = request.args.get("userId")
-        if not user_id_raw:
-            return jsonify({"error": "userId is required"}), 400
+        auth_user = None
+        if not has_internal_service_access():
+            auth_user, error_response = require_authenticated_user()
+            if error_response:
+                return error_response
 
-        user_id = parse_int(user_id_raw, "userId")
+        user_id_raw = request.args.get("userId")
+        if user_id_raw:
+            user_id = parse_int(user_id_raw, "userId")
+            if auth_user and user_id != int(auth_user["userId"]):
+                return jsonify({"error": "Forbidden"}), 403
+        elif auth_user:
+            user_id = int(auth_user["userId"])
+        else:
+            return jsonify({"error": "userId is required"}), 400
 
         db = connect_db()
         cursor = db.cursor(dictionary=True)
@@ -576,11 +633,21 @@ def get_user_events():
 def get_managing_events():
     db = None
     try:
-        user_id_raw = request.args.get("userId")
-        if not user_id_raw:
-            return jsonify({"error": "userId is required"}), 400
+        auth_user = None
+        if not has_internal_service_access():
+            auth_user, error_response = require_authenticated_manager()
+            if error_response:
+                return error_response
 
-        user_id = parse_int(user_id_raw, "userId")
+        user_id_raw = request.args.get("userId")
+        if user_id_raw:
+            user_id = parse_int(user_id_raw, "userId")
+            if auth_user and user_id != int(auth_user["userId"]):
+                return jsonify({"error": "Forbidden"}), 403
+        elif auth_user:
+            user_id = int(auth_user["userId"])
+        else:
+            return jsonify({"error": "userId is required"}), 400
 
         db = connect_db()
         cursor = db.cursor(dictionary=True)
@@ -604,6 +671,9 @@ def get_managing_events():
 def add_user_ticket():
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         data = request.get_json() or {}
 
         user_id = parse_int(data.get("userId"), "userId")
@@ -662,6 +732,9 @@ def add_user_ticket():
 def get_ticket(ticketId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         ticketId = normalize_ticket_id(ticketId)
         db = connect_db()
         cursor = db.cursor(dictionary=True)
@@ -686,6 +759,9 @@ def get_ticket(ticketId):
 def update_ticket_status(ticketId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         ticketId = normalize_ticket_id(ticketId)
         data = request.get_json() or {}
         status = data.get("status")
@@ -720,6 +796,9 @@ def update_ticket_status(ticketId):
 def get_tickets_by_event(eventId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         eventId = normalize_event_id(eventId)
         status = request.args.get("status")
 
@@ -749,6 +828,9 @@ def get_tickets_by_event(eventId):
 def update_managed_event(eventId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         eventId = normalize_event_id(eventId)
         data = request.get_json() or {}
 
@@ -794,6 +876,9 @@ def update_managed_event(eventId):
 def cancel_managed_event(eventId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         eventId = normalize_event_id(eventId)
         db = connect_db()
         cursor = db.cursor(dictionary=True)

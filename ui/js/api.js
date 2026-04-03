@@ -23,10 +23,17 @@ async function apiRequest(path, options = {}) {
         query,
         body,
         headers = {},
+        includeAuth = true,
         baseUrl = API_BASE,
         timeoutMs = 15000
     } = options;
-    const requestOptions = { method, headers: { ...headers } };
+    const requestOptions = {
+        method,
+        headers: {
+            ...(includeAuth ? getAuthHeaders() : {}),
+            ...headers
+        }
+    };
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
     requestOptions.signal = controller.signal;
@@ -176,6 +183,7 @@ async function loginUser(credentials) {
     return apiRequest("/auth/login", {
         method: "POST",
         body: credentials,
+        includeAuth: false,
         baseUrl: USER_API_BASE,
         timeoutMs: 5000
     });
@@ -185,6 +193,7 @@ async function registerUser(data) {
     return apiRequest("/auth/register", {
         method: "POST",
         body: data,
+        includeAuth: false,
         baseUrl: USER_API_BASE,
         timeoutMs: 5000
     });

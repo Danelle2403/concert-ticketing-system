@@ -12,6 +12,12 @@ import pika
 import requests
 
 
+INTERNAL_SERVICE_TOKEN = os.environ.get(
+    "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
+)
+INTERNAL_SERVICE_PREFIXES = ("http://user-service:",)
+
+
 def utc_now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -24,7 +30,10 @@ def env_flag(name, default=False):
 
 
 def request_json(method, url, payload=None, timeout=8):
-    response = requests.request(method, url, json=payload, timeout=timeout)
+    headers = None
+    if any(str(url).startswith(prefix) for prefix in INTERNAL_SERVICE_PREFIXES):
+        headers = {"X-Internal-Service-Token": INTERNAL_SERVICE_TOKEN}
+    response = requests.request(method, url, json=payload, timeout=timeout, headers=headers)
     try:
         body = response.json()
     except Exception:

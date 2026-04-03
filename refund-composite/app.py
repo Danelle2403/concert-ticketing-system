@@ -16,6 +16,17 @@ NOTIFICATION_SERVICE_URL = os.environ.get(
     "NOTIFICATION_SERVICE_URL", "http://notification-service:5000"
 )
 CUSTOMER_SUPPORT_EMAIL = os.environ.get("CUSTOMER_SUPPORT_EMAIL", "support@concerthub.local")
+INTERNAL_SERVICE_TOKEN = os.environ.get(
+    "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
+)
+INTERNAL_SERVICE_PREFIXES = (
+    "http://user-service:",
+    "http://purchase-composite:",
+    "http://seat-inventory:",
+    "http://payment-service:",
+    "http://event-service:",
+    "http://notification-service:",
+)
 
 
 def env_flag(name, default=False):
@@ -25,8 +36,20 @@ def env_flag(name, default=False):
     return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def internal_service_headers_for_url(url):
+    if any(str(url).startswith(prefix) for prefix in INTERNAL_SERVICE_PREFIXES):
+        return {"X-Internal-Service-Token": INTERNAL_SERVICE_TOKEN}
+    return {}
+
+
 def req_json(method, url, payload=None, timeout=8):
-    res = requests.request(method, url, json=payload, timeout=timeout)
+    res = requests.request(
+        method,
+        url,
+        json=payload,
+        timeout=timeout,
+        headers=internal_service_headers_for_url(url) or None,
+    )
     try:
         body = res.json()
     except Exception:
@@ -38,6 +61,54 @@ def extract_data(body):
     if isinstance(body, dict) and isinstance(body.get("data"), dict):
         return body["data"]
     return body
+
+
+def get_bearer_authorization():
+    header = str(request.headers.get("Authorization") or "").strip()
+    if not header.lower().startswith("bearer "):
+        return None
+    return header
+
+
+def authenticate_request_user():
+    authorization = get_bearer_authorization()
+    if not authorization:
+        return None
+
+    response = requests.request(
+        "GET",
+        f"{USER_SERVICE_URL}/auth/me",
+        timeout=8,
+        headers={"Authorization": authorization},
+    )
+    if response.status_code != 200:
+        return None
+
+    try:
+        return extract_data(response.json())
+    except Exception:
+        return None
+
+
+def require_authenticated_user():
+    user = authenticate_request_user()
+    if not user:
+        return None, (jsonify({"error": "Unauthorized"}), 401)
+    return user, None
+
+
+def require_authenticated_manager():
+    user, error_response = require_authenticated_user()
+    if error_response:
+        return None, error_response
+    if user.get("role") != "manager":
+        return None, (jsonify({"error": "Manager access required"}), 403)
+    return user, None
+
+
+def has_internal_service_access():
+    provided = str(request.headers.get("X-Internal-Service-Token") or "")
+    return bool(provided) and provided == INTERNAL_SERVICE_TOKEN
 
 
 def normalize_prefixed_id(value, prefixes):
@@ -268,9 +339,21 @@ def health():
 
 @app.route("/refunds/<ticketId>", methods=["POST"])
 def refund_ticket(ticketId):
+    ticket_id = normalize_ticket_id(ticketId)
+    if not has_internal_service_access():
+        auth_user, error_response = require_authenticated_user()
+        if error_response:
+            return error_response
+
+        ticket_code, ticket = req_json("GET", f"{USER_SERVICE_URL}/user/ticket/{ticket_id}")
+        if ticket_code != 200:
+            return jsonify({"error": "Ticket not found", "ticketId": ticket_id}), 404
+        if int(ticket.get("userId") or 0) != int(auth_user["userId"]):
+            return jsonify({"error": "Forbidden"}), 403
+
     payload = request.get_json(silent=True) or {}
     ok, refund_payload, code = refund_single(
-        normalize_ticket_id(ticketId),
+        ticket_id,
         source=payload.get("source"),
         reason=payload.get("reason"),
     )
@@ -281,6 +364,17 @@ def refund_ticket(ticketId):
 def refund_event(eventId):
     payload = request.get_json(silent=True) or {}
     eventId = normalize_event_id(eventId)
+    if not has_internal_service_access():
+        auth_user, error_response = require_authenticated_manager()
+        if error_response:
+            return error_response
+
+        event = fetch_event(eventId)
+        if not event:
+            return jsonify({"error": "Event not found"}), 404
+        if int(event.get("managerId") or 0) != int(auth_user["userId"]):
+            return jsonify({"error": "Forbidden"}), 403
+
     code, data = req_json(
         "GET",
         f"{USER_SERVICE_URL}/user/tickets/by-event/{eventId}?status=active",

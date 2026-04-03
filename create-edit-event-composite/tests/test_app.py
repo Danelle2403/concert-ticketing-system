@@ -8,6 +8,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app as composite_app
 
 
+def manager_user(user_id=2, name="Maya Manager"):
+    return {"id": user_id, "userId": user_id, "name": name, "role": "manager"}
+
+
 @pytest.fixture
 def client():
     flask_app = composite_app.create_app(
@@ -25,9 +29,9 @@ def test_create_manager_event_success(client, monkeypatch):
     test_client, _app = client
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
-        lambda *_args, **_kwargs: {"id": 2, "name": "Maya Manager", "role": "manager"},
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
     )
 
     captured_inventory_bootstrap = {}
@@ -125,8 +129,8 @@ def test_create_rejects_non_manager(client, monkeypatch):
         )
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
+        composite_app,
+        "authenticate_manager_request",
         _raise_non_manager,
     )
 
@@ -152,9 +156,9 @@ def test_create_rejects_publish_without_bootstrap_data(client, monkeypatch):
     test_client, _app = client
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
-        lambda *_args, **_kwargs: {"id": 2, "role": "manager"},
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
     )
 
     response = test_client.post(
@@ -179,9 +183,9 @@ def test_edit_rejects_non_owner_manager(client, monkeypatch):
     test_client, _app = client
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
-        lambda *_args, **_kwargs: {"id": 3, "role": "manager"},
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(3),
     )
     monkeypatch.setattr(
         composite_app.service_clients,
@@ -209,9 +213,9 @@ def test_list_manager_events_returns_event_summaries(client, monkeypatch):
     test_client, _app = client
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
-        lambda *_args, **_kwargs: {"id": 2, "role": "manager"},
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
     )
     monkeypatch.setattr(
         composite_app.service_clients,
@@ -239,9 +243,9 @@ def test_edit_partial_update_does_not_send_empty_configuration(client, monkeypat
     test_client, _app = client
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
-        lambda *_args, **_kwargs: {"id": 2, "role": "manager"},
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
     )
     monkeypatch.setattr(
         composite_app.service_clients,
@@ -301,9 +305,9 @@ def test_edit_rejects_inventory_shape_change_without_update_api(client, monkeypa
     test_client, _app = client
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
-        lambda *_args, **_kwargs: {"id": 2, "role": "manager"},
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
     )
     monkeypatch.setattr(
         composite_app.service_clients,
@@ -373,9 +377,9 @@ def test_edit_bootstraps_inventory_when_missing(client, monkeypatch):
     test_client, _app = client
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
-        lambda *_args, **_kwargs: {"id": 2, "role": "manager"},
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
     )
     monkeypatch.setattr(
         composite_app.service_clients,
@@ -460,9 +464,9 @@ def test_edit_queues_notification_when_event_details_change(client, monkeypatch)
     test_client, _app = client
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
-        lambda *_args, **_kwargs: {"id": 2, "name": "Maya Manager", "role": "manager"},
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
     )
     monkeypatch.setattr(
         composite_app.service_clients,
@@ -528,9 +532,9 @@ def test_edit_warns_when_notification_publish_fails(client, monkeypatch):
     test_client, _app = client
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
-        lambda *_args, **_kwargs: {"id": 2, "name": "Maya Manager", "role": "manager"},
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
     )
     monkeypatch.setattr(
         composite_app.service_clients,
@@ -592,13 +596,11 @@ def test_cancel_manager_event_queues_cancelled_notification(client, monkeypatch)
     test_client, _app = client
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
+        composite_app,
+        "authenticate_manager_request",
         lambda *_args, **_kwargs: {
-            "id": 2,
-            "name": "Maya Manager",
+            **manager_user(2),
             "email": "manager@example.com",
-            "role": "manager",
         },
     )
     monkeypatch.setattr(
@@ -710,13 +712,11 @@ def test_edit_and_cancel_manager_event_lifecycle(client, monkeypatch):
     published_messages = []
 
     monkeypatch.setattr(
-        composite_app.service_clients,
-        "validate_manager_access",
+        composite_app,
+        "authenticate_manager_request",
         lambda *_args, **_kwargs: {
-            "id": 2,
-            "name": "Maya Manager",
+            **manager_user(2),
             "email": "manager@example.com",
-            "role": "manager",
         },
     )
     monkeypatch.setattr(

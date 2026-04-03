@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -20,6 +21,13 @@ DEFAULT_SERVICE_URLS = {
 DEFAULT_ORDER_SERVICE_URL = (
     "https://personal-uq3wxrah.outsystemscloud.com/OrderService/rest/Order"
 )
+INTERNAL_SERVICE_TOKEN = os.environ.get(
+    "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
+)
+INTERNAL_AUTH_PREFIXES = (
+    "http://localhost:5001/",
+    "http://localhost:5010/",
+)
 
 
 def load_demo_state():
@@ -30,6 +38,8 @@ def load_demo_state():
 def http_json(method, url, payload=None, timeout=20):
     data = None
     headers = {}
+    if any(url.startswith(prefix) for prefix in INTERNAL_AUTH_PREFIXES):
+        headers["X-Internal-Service-Token"] = INTERNAL_SERVICE_TOKEN
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"

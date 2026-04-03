@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 import time
 import uuid
@@ -8,8 +9,16 @@ import pika
 import requests
 
 
+INTERNAL_SERVICE_TOKEN = os.environ.get(
+    "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
+)
+
+
 def request_json(method, url, payload=None, timeout=8):
-    response = requests.request(method, url, json=payload, timeout=timeout)
+    headers = None
+    if "/user/" in url:
+        headers = {"X-Internal-Service-Token": INTERNAL_SERVICE_TOKEN}
+    response = requests.request(method, url, json=payload, timeout=timeout, headers=headers)
     try:
         body = response.json()
     except Exception:
