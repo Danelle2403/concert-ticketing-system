@@ -9,7 +9,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app as user_app
 
 DEMO_STATE = user_app.load_demo_seed_data()
-DEMO_USERS = deepcopy(DEMO_STATE["users"])
+DEMO_USERS = [
+    {
+        "id": row["id"],
+        "name": row["name"],
+        "email": row["email"],
+        "password_hash": user_app.generate_password_hash(row["password"]),
+        "role": row["role"],
+    }
+    for row in DEMO_STATE["users"]
+]
 DEMO_MANAGED_EVENTS = deepcopy(DEMO_STATE["managedEvents"])
 DEMO_USER_TICKETS = deepcopy(DEMO_STATE["userTickets"])
 
@@ -38,6 +47,14 @@ class FakeUserCursor:
         self.rowcount = 0
         state = self.db.state
 
+        if sql.startswith("SELECT column_name FROM information_schema.columns"):
+            self.results = [{"column_name": "password_hash"}]
+            return
+
+        if sql.startswith("ALTER TABLE users ADD COLUMN password_hash"):
+            self.rowcount = 0
+            return
+
         if sql == "SELECT * FROM users":
             self.results = [deepcopy(row) for row in state["users"]]
             return
@@ -52,12 +69,13 @@ class FakeUserCursor:
             self.results = [deepcopy(row) for row in state["users"] if row["email"] == email]
             return
 
-        if sql.startswith("INSERT INTO users (name, email, role) VALUES"):
+        if sql.startswith("INSERT INTO users (name, email, password_hash, role) VALUES"):
             user = {
                 "id": state["next_user_id"],
                 "name": params[0],
                 "email": params[1],
-                "role": params[2],
+                "password_hash": params[2],
+                "role": params[3],
             }
             state["next_user_id"] += 1
             state["users"].append(user)
@@ -112,8 +130,14 @@ class FakeUserCursor:
             self.rowcount = before - len(state["users"])
             return
 
-        if sql.startswith("INSERT INTO users (id, name, email, role) VALUES"):
-            user = {"id": int(params[0]), "name": params[1], "email": params[2], "role": params[3]}
+        if sql.startswith("INSERT INTO users (id, name, email, password_hash, role) VALUES"):
+            user = {
+                "id": int(params[0]),
+                "name": params[1],
+                "email": params[2],
+                "password_hash": params[3],
+                "role": params[4],
+            }
             state["users"] = [row for row in state["users"] if row["id"] != user["id"]]
             state["users"].append(user)
             state["users"].sort(key=lambda row: row["id"])
@@ -311,6 +335,8 @@ class FakeUserDB:
 @pytest.fixture
 def client(monkeypatch):
     db = FakeUserDB()
+    monkeypatch.setattr(user_app, "_user_auth_schema_checked", False)
+    monkeypatch.setenv("AUTH_TOKEN_SECRET", "test-auth-secret")
     monkeypatch.setattr(user_app, "get_db", lambda: db)
     return user_app.app.test_client(), db
 
@@ -320,7 +346,13 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
 
     db.state["user_tickets"] = []
     db.state["managed_events"] = []
-    db.state["users"] = [{"id": 555, "name": "Temp", "email": "temp@example.com", "role": "fan"}]
+    db.state["users"] = [{
+        "id": 555,
+        "name": "Temp",
+        "email": "temp@example.com",
+        "password_hash": user_app.generate_password_hash("Temporary123!"),
+        "role": "fan",
+    }]
 
     response = test_client.post("/user/seed")
 
@@ -391,3 +423,70 @@ def test_ticket_upsert_and_managed_event_cancel_normalize_prefixed_ids(client):
     assert cancel.status_code == 200
     assert cancel.get_json()["eventId"] == "1"
     assert cancel.get_json()["status"] == "cancelled"
+
+
+def test_auth_register_and_login_use_email_password(client):
+    test_client, db = client
+
+    register = test_client.post(
+        "/auth/register",
+        json={
+            "name": "New Fan",
+            "email": "newfan@example.com",
+            "password": "Password123!",
+            "role": "fan",
+        },
+    )
+
+    assert register.status_code == 201
+    register_payload = register.get_json()
+    assert register_payload["email"] == "newfan@example.com"
+    assert register_payload["authToken"]
+    assert "password_hash" not in register_payload
+
+    created_user = next(row for row in db.state["users"] if row["email"] == "newfan@example.com")
+    assert user_app.check_password_hash(created_user["password_hash"], "Password123!")
+
+    login = test_client.post(
+        "/auth/login",
+        json={"email": "newfan@example.com", "password": "Password123!"},
+    )
+
+    assert login.status_code == 200
+    login_payload = login.get_json()
+    assert login_payload["email"] == "newfan@example.com"
+    assert login_payload["userId"] == register_payload["userId"]
+    assert login_payload["authToken"]
+
+    session = test_client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {login_payload['authToken']}"},
+    )
+
+    assert session.status_code == 200
+    assert session.get_json()["userId"] == register_payload["userId"]
+
+
+def test_auth_login_rejects_invalid_password(client):
+    test_client, _db = client
+
+    response = test_client.post(
+        "/auth/login",
+        json={"email": "fan@example.com", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.get_json()["error"] == "Invalid email or password"
+
+
+def test_auth_me_rejects_missing_or_invalid_token(client):
+    test_client, _db = client
+
+    missing = test_client.get("/auth/me")
+    invalid = test_client.get(
+        "/auth/me",
+        headers={"Authorization": "Bearer invalid-token"},
+    )
+
+    assert missing.status_code == 401
+    assert invalid.status_code == 401

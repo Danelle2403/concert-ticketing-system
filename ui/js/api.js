@@ -22,10 +22,11 @@ async function apiRequest(path, options = {}) {
         method = "GET",
         query,
         body,
+        headers = {},
         baseUrl = API_BASE,
         timeoutMs = 15000
     } = options;
-    const requestOptions = { method, headers: {} };
+    const requestOptions = { method, headers: { ...headers } };
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
     requestOptions.signal = controller.signal;
@@ -78,6 +79,15 @@ function getStoredUser() {
 
 function storeUser(user) {
     sessionStorage.setItem("user", JSON.stringify(user));
+}
+
+function getStoredAuthToken() {
+    return getStoredUser()?.authToken || null;
+}
+
+function getAuthHeaders() {
+    const authToken = getStoredAuthToken();
+    return authToken ? { Authorization: `Bearer ${authToken}` } : {};
 }
 
 function clearStoredSession() {
@@ -162,18 +172,28 @@ function normalizeEventRecord(event) {
 }
 
 // User Service
-async function loginUser(userId) {
-    return apiRequest(`/user/${userId}`, {
+async function loginUser(credentials) {
+    return apiRequest("/auth/login", {
+        method: "POST",
+        body: credentials,
         baseUrl: USER_API_BASE,
         timeoutMs: 5000
     });
 }
 
 async function registerUser(data) {
-    return apiRequest("/user/new", {
+    return apiRequest("/auth/register", {
         method: "POST",
         body: data,
         baseUrl: USER_API_BASE,
+        timeoutMs: 5000
+    });
+}
+
+async function getAuthenticatedUser() {
+    return apiRequest("/auth/me", {
+        baseUrl: USER_API_BASE,
+        headers: getAuthHeaders(),
         timeoutMs: 5000
     });
 }
