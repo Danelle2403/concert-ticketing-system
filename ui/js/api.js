@@ -1,7 +1,12 @@
 const API_BASE = "http://localhost:8000";
+const USER_API_BASE = "http://localhost:5001";
 
 function buildUrl(path, query = {}) {
-    const url = new URL(`${API_BASE}${path}`);
+    return buildAbsoluteUrl(API_BASE, path, query);
+}
+
+function buildAbsoluteUrl(baseUrl, path, query = {}) {
+    const url = new URL(`${baseUrl}${path}`);
 
     Object.entries(query).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== "") {
@@ -13,34 +18,54 @@ function buildUrl(path, query = {}) {
 }
 
 async function apiRequest(path, options = {}) {
-    const { method = "GET", query, body } = options;
+    const {
+        method = "GET",
+        query,
+        body,
+        baseUrl = API_BASE,
+        timeoutMs = 15000
+    } = options;
     const requestOptions = { method, headers: {} };
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    requestOptions.signal = controller.signal;
 
     if (body !== undefined) {
         requestOptions.headers["Content-Type"] = "application/json";
         requestOptions.body = JSON.stringify(body);
     }
 
-    const response = await fetch(buildUrl(path, query), requestOptions);
-    const contentType = response.headers.get("content-type") || "";
-    const payload = contentType.includes("application/json")
-        ? await response.json()
-        : await response.text();
+    try {
+        const response = await fetch(buildAbsoluteUrl(baseUrl, path, query), requestOptions);
+        const contentType = response.headers.get("content-type") || "";
+        const payload = contentType.includes("application/json")
+            ? await response.json()
+            : await response.text();
 
-    if (!response.ok) {
-        const message =
-            payload?.error?.message ||
-            payload?.error ||
-            payload?.message ||
-            `Request failed with status ${response.status}`;
+        if (!response.ok) {
+            const message =
+                payload?.error?.message ||
+                payload?.error ||
+                payload?.message ||
+                `Request failed with status ${response.status}`;
 
-        const error = new Error(message);
-        error.status = response.status;
-        error.payload = payload;
+            const error = new Error(message);
+            error.status = response.status;
+            error.payload = payload;
+            throw error;
+        }
+
+        return payload;
+    } catch (error) {
+        if (error.name === "AbortError") {
+            const timeoutError = new Error("Request timed out. Please try again.");
+            timeoutError.status = 408;
+            throw timeoutError;
+        }
         throw error;
+    } finally {
+        window.clearTimeout(timeoutId);
     }
-
-    return payload;
 }
 
 function getStoredUser() {
@@ -138,15 +163,27 @@ function normalizeEventRecord(event) {
 
 // User Service
 async function loginUser(userId) {
-    return apiRequest(`/user/${userId}`);
+    return apiRequest(`/user/${userId}`, {
+        baseUrl: USER_API_BASE,
+        timeoutMs: 5000
+    });
 }
 
 async function registerUser(data) {
-    return apiRequest("/user/new", { method: "POST", body: data });
+    return apiRequest("/user/new", {
+        method: "POST",
+        body: data,
+        baseUrl: USER_API_BASE,
+        timeoutMs: 5000
+    });
 }
 
 async function getUserEvents(userId) {
-    return apiRequest("/user/events", { query: { userId } });
+    return apiRequest("/user/events", {
+        query: { userId },
+        baseUrl: USER_API_BASE,
+        timeoutMs: 5000
+    });
 }
 
 async function getManagingEvents(userId) {

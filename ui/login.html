@@ -92,7 +92,7 @@
                         <div id="login-error" class="error-msg hidden">
                             User not found. Please check your ID or register.
                         </div>
-                        <button type="submit" class="btn-primary full-width">Login</button>
+                        <button type="submit" id="login-submit" class="btn-primary full-width">Login</button>
                         <p class="auth-switch">
                             Don't have an account?
                             <button type="button" class="auth-switch-btn" onclick="switchTab('register')">Register here</button>
@@ -129,7 +129,7 @@
                         <div id="register-success" class="success-msg hidden">
                             Account created! Redirecting...
                         </div>
-                        <button type="submit" class="btn-primary full-width">Create Account</button>
+                        <button type="submit" id="register-submit" class="btn-primary full-width">Create Account</button>
                         <p class="auth-switch">
                             Already have an account?
                             <button type="button" class="auth-switch-btn" onclick="switchTab('login')">Login here</button>
@@ -168,8 +168,16 @@
             document.getElementById("tab-register").classList.toggle("active", tab === "register");
         }
 
+        function setButtonBusy(button, isBusy, idleLabel, busyLabel) {
+            if (!button) return;
+            button.disabled = isBusy;
+            button.textContent = isBusy ? busyLabel : idleLabel;
+            button.setAttribute("aria-busy", isBusy ? "true" : "false");
+        }
+
         async function handleLogin() {
             const panel = document.getElementById("panel-login");
+            const submitButton = document.getElementById("login-submit");
             clearErrors(panel);
             document.getElementById("login-error").classList.add("hidden");
 
@@ -188,6 +196,7 @@
             }
 
             try {
+                setButtonBusy(submitButton, true, "Login", "Checking...");
                 const data = await loginUser(userId);
                 if (data && data.userId) {
                     storeUser(data);
@@ -197,13 +206,20 @@
                     document.getElementById("login-error").classList.remove("hidden");
                 }
             } catch (err) {
-                setFieldError(userIdField, "We could not find that user ID.");
+                const message = err?.status === 404
+                    ? "We could not find that user ID."
+                    : (err?.message || "Login failed. Please try again.");
+                setFieldError(userIdField, message);
                 document.getElementById("login-error").classList.remove("hidden");
+                document.getElementById("login-error").textContent = message;
+            } finally {
+                setButtonBusy(submitButton, false, "Login", "Checking...");
             }
         }
 
         async function handleRegister() {
             const panel = document.getElementById("panel-register");
+            const submitButton = document.getElementById("register-submit");
             clearErrors(panel);
             document.getElementById("register-error").classList.add("hidden");
             document.getElementById("register-success").classList.add("hidden");
@@ -226,6 +242,7 @@
             }
 
             try {
+                setButtonBusy(submitButton, true, "Create Account", "Creating...");
                 const data = await registerUser({ name, email, role });
                 if (data && data.userId) {
                     storeUser(data);
@@ -240,6 +257,8 @@
                 }
                 document.getElementById("register-error").classList.remove("hidden");
                 document.getElementById("register-error").textContent = err.message || "Registration failed. Please try again.";
+            } finally {
+                setButtonBusy(submitButton, false, "Create Account", "Creating...");
             }
         }
 
