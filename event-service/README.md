@@ -47,6 +47,7 @@ Service URLs:
 - PostgreSQL: `localhost:5434`
 
 In the repo root stack, the same service is exposed on `http://localhost:5003`.
+For browser traffic, use Kong instead: `http://localhost:8000/events`.
 
 ## Local development
 

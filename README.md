@@ -22,6 +22,7 @@ The system supports 3 main scenarios:
 ## Prerequisites
 Make sure you have the following installed before running:
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Colima](https://github.com/abiosoft/colima) with `nerdctl` if you use Colima instead of Docker Desktop
 - [Git](https://git-scm.com/)
 
 ## Local Environment Setup
@@ -35,17 +36,17 @@ Required for SendGrid-backed notifications:
 - `SENDGRID_API_KEY`: your SendGrid API key with Mail Send permission
 - `SENDGRID_FROM_EMAIL`: a verified sender address or verified domain address in SendGrid
 
-Optional for the standalone Stripe wrapper:
+Required for the live purchase/refund flow:
 - `STRIPE_SECRET_KEY`: your Stripe secret key
-- `STRIPE_PUBLISHABLE_KEY`: your Stripe publishable key (useful for UI work later)
+- `STRIPE_PUBLISHABLE_KEY`: your Stripe publishable key
 
 If these are left blank, the notification wrapper still runs, but it switches to `log_only` mode and writes the notification payload to container logs instead of sending email.
 If the Stripe keys are left blank, the payment wrapper still starts, but it returns `503 STRIPE_NOT_CONFIGURED` for live payment/refund requests.
 
 Notification behavior added on this branch:
 - event edits publish `event.updated` through RabbitMQ and fan out notification emails to current ticket holders
-- event cancellations publish `event.cancelled` through RabbitMQ and fan out cancellation emails with planned Stripe refund messaging
-- the notification wrapper can also be triggered directly through internal helper endpoints for testing
+- event cancellations publish `event.cancelled` through RabbitMQ and fan out cancellation emails while automatic Stripe refunds are processed
+- purchase confirmation and refund success/failure emails can also be triggered through internal helper endpoints
 
 ## How to Run
 
@@ -60,33 +61,57 @@ cd concert-ticketing-system
 docker-compose up --build
 ```
 
+If you use Colima:
+```bash
+colima start
+colima nerdctl -- compose up -d --build
+```
+
 ### 3. Access the application
-| Service | URL |
+Use the API gateway for all browser and manual app flows. The UI is already wired to it.
+
+| Gateway entrypoint | URL |
 |---|---|
 | UI | http://localhost:8080/index.html |
 | Kong API Gateway (used by UI) | http://localhost:8000 |
+| Browse events | http://localhost:8000/events |
+| User endpoints | http://localhost:8000/user |
+| Purchase endpoints | http://localhost:8000/purchase |
+| Refund endpoints | http://localhost:8000/refunds |
+| Manager event orchestration | http://localhost:8000/events |
+| RabbitMQ Dashboard | http://localhost:15672 |
+
+Direct service ports still exist for internal service-to-service traffic, health checks, and debugging:
+
+| Internal/debug port | URL |
+|---|---|
 | User Service | http://localhost:5001 |
 | Event Service | http://localhost:5003 |
 | Seat Inventory Service | http://localhost:5004 |
+| Ticket Atomic Service | http://localhost:5002 |
 | Purchase Composite | http://localhost:5010 |
 | Refund Composite | http://localhost:5011 |
 | Edit Event Composite | http://localhost:5012 |
-| Ticket Atomic Service | http://localhost:5002/health |
-| Notification Service | http://localhost:5013/health |
-| Payment Service | http://localhost:5014/health |
-| RabbitMQ Dashboard | http://localhost:15672 |
+| Notification Service | http://localhost:5013 |
+| Payment Service | http://localhost:5014 |
 
-### 4. Seed demo users/events
+### 4. Reset and seed demo state
 ```bash
-curl -X POST http://localhost:5001/user/seed
-curl -X POST http://localhost:5004/inventory/admin/seed-order-demo
+python3 scripts/reset_local_demo_state.py
 ```
 
 Default demo users:
 - Fan login `User ID = 1`
-- Manager login `User ID = 2`
+- Fan login `User ID = 2`
+- Manager login `User ID = 99`
 
-The extra seat inventory seed keeps the local demo data aligned with the external OrderService rows used by the purchase/refund wrappers.
+The reset script rebuilds local service state from the shared fixture at `demo/local_demo_state.json`, creates fresh OrderService rows, and then repoints Purchase Composite to those new order ids.
+
+If you only want the smaller order-aligned seed without wiping everything, the legacy internal endpoints still exist:
+```bash
+curl -X POST http://localhost:5001/user/seed
+curl -X POST http://localhost:5004/inventory/admin/seed-order-demo
+```
 
 ### 5. Stop all services
 ```bash
@@ -151,7 +176,22 @@ concert-ticketing-system/
 └── README.md
 ```
 
-## API Endpoints — User Service
+## Gateway Route Map
+
+Use these routes from the UI or from external clients. They are the supported public contract for the local stack.
+
+| Route prefix | Routed to | Purpose |
+|---|---|---|
+| `/user`, `/users` | User Service | login, registration, fan ticket lookups |
+| `/events` `GET` | Event Service | browse and view event details |
+| `/events` `POST` / `PUT` | Create/Edit Event Composite | create, edit, and cancel manager flows |
+| `/manager/events` | Create/Edit Event Composite | manager-native route aliases |
+| `/purchase` | Purchase Composite | checkout session creation and confirmation |
+| `/refunds` | Refund Composite | ticket refund flows |
+
+The gateway intentionally does not expose Ticket Atomic, Notification Service, or Payment Service as public browser routes. Those remain internal dependencies behind the composites.
+
+## Internal Service Endpoints — User Service
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | /health | Health check |
@@ -168,29 +208,35 @@ concert-ticketing-system/
 | PUT | /user/managed/<eventId> | Internal managed-event update |
 | POST | /user/managed/<eventId>/cancel | Internal managed-event cancel |
 
-## API Endpoints — Event Service
+## Internal Service Endpoints — Event Service
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | /health | Health check |
 | GET | /events | List events for browse page |
 | GET | /events/<eventId> | Get event details |
-| PUT | /events/<eventId>/edit | Edit event details |
-| POST | /events/<eventId>/cancel | Cancel event |
+| GET | /events/<eventId>/summary | Get compact event summary |
+| POST | /events | Create raw event record |
+| PUT | /events/<eventId> | Update raw event record |
+| PUT | /events/<eventId>/reschedule | Reschedule raw event record |
+| POST | /events/<eventId>/cancel | Cancel raw event record |
 
-## API Endpoints — Purchase Composite
+## Internal Service Endpoints — Purchase Composite
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | /health | Health check |
-| POST | /purchase/checkout | Buy ticket flow orchestration |
+| GET | /purchase/config | Stripe publishable key + seat hold TTL for UI |
+| POST | /purchase/checkout/session | Create Stripe-backed checkout session and seat hold |
+| POST | /purchase/checkout/confirm | Verify payment, confirm seats, issue tickets, create order |
+| POST | /purchase/checkout | Legacy checkout alias |
 | GET | /purchase/<purchaseId>/status | Get purchase status |
 | GET | /purchase/ticket/<ticketId> | Internal ticket mapping lookup |
 | POST | /purchase/ticket/<ticketId>/status | Internal ticket mapping status update |
 
-## API Endpoints — Refund Composite
+## Internal Service Endpoints — Refund Composite
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | /health | Health check |
-| POST | /refunds/<ticketId> | Refund one ticket |
+| POST | /refunds/<ticketId> | Refund one ticket through Stripe and update local state |
 | POST | /refunds/event/<eventId> | Refund all active tickets for an event |
 
 ## API Endpoints — Ticket Atomic Service
@@ -202,21 +248,28 @@ concert-ticketing-system/
 | GET | /tickets/event/<eventId> | Fetch tickets for an event |
 | POST | /tickets/<ticketId>/invalidate | Invalidate a ticket |
 
-## API Endpoints — Edit Event Composite
+## Internal Service Endpoints — Edit Event Composite
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | /health | Health check |
-| POST | /events/create | Scenario 2 create orchestration |
-| PUT | /events/<eventId>/edit | Scenario 2 edit orchestration |
-| POST | /events/<eventId>/cancel | Scenario 3 manager cancellation orchestration |
+| GET | /manager/events?managerId=<managerId> | Manager-owned event listing with access validation |
+| POST | /manager/events | Scenario 2 create orchestration |
+| PUT | /manager/events/<eventId> | Scenario 2 edit orchestration |
+| POST | /manager/events/<eventId>/cancel | Scenario 3 manager cancellation orchestration |
+| POST | /events/create | Compatibility alias |
+| PUT | /events/<eventId>/edit | Compatibility alias |
+| POST | /events/<eventId>/cancel | Compatibility alias |
 
-## API Endpoints — Notification Service
+## Internal Service Endpoints — Notification Service
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | /health | Health + consumer state |
 | POST | /notifications/events | Internal/manual dispatch helper |
 | POST | /notifications/event-updated | Internal/manual dispatch helper |
 | POST | /notifications/event-cancelled | Internal/manual dispatch helper |
+| POST | /notifications/purchase-confirmation | Internal purchase email helper |
+| POST | /notifications/refund-success | Internal refund success email helper |
+| POST | /notifications/refund-failure | Internal refund failure email helper |
 
 ## API Endpoints — Payment Service
 | Method | Endpoint | Description |

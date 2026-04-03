@@ -641,6 +641,20 @@ def test_cancel_manager_event_queues_cancelled_notification(client, monkeypatch)
         captured_message.update(payload)
 
     monkeypatch.setattr(composite_app.event_bus, "publish_message", _publish_message)
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "request_json",
+        lambda method, url, payload=None, timeout=8: (
+            200,
+            {
+                "eventId": "evt-cancelled",
+                "processed": 1,
+                "successful": 1,
+                "failed": 0,
+                "results": [{"ticketId": "2", "refundId": "re_123"}],
+            },
+        ),
+    )
 
     response = test_client.post(
         "/manager/events/evt-cancelled/cancel",
@@ -656,16 +670,19 @@ def test_cancel_manager_event_queues_cancelled_notification(client, monkeypatch)
     assert payload["data"]["integration"]["refundFlow"]["provider"] == "stripe"
     assert payload["data"]["integration"]["refundFlow"]["service"] == "refund-composite"
     assert payload["data"]["integration"]["refundFlow"]["requestRequired"] is False
-    assert payload["data"]["integration"]["refundFlow"]["status"] == "planned"
-    assert payload["data"]["integration"]["refundFlow"]["triggered"] is False
+    assert payload["data"]["integration"]["refundFlow"]["status"] == "completed"
+    assert payload["data"]["integration"]["refundFlow"]["triggered"] is True
     assert payload["data"]["integration"]["refundFlow"]["eventRefundEndpoint"].endswith(
         "/refunds/event/evt-cancelled"
     )
+    assert payload["data"]["integration"]["refundFlow"]["summary"]["successful"] == 1
     assert captured_routing_key["value"] == "event.cancelled"
     assert captured_message["type"] == "event.cancelled"
     assert captured_message["eventId"] == "evt-cancelled"
     assert captured_message["refundInfo"]["provider"] == "stripe"
     assert captured_message["refundInfo"]["requestRequired"] is False
+    assert captured_message["refundInfo"]["status"] == "processing"
+    assert captured_message["refundInfo"]["autoRefund"] is True
 
 
 def test_edit_and_cancel_manager_event_lifecycle(client, monkeypatch):
@@ -751,6 +768,23 @@ def test_edit_and_cancel_manager_event_lifecycle(client, monkeypatch):
             {"routing_key": routing_key, "payload": payload}
         ),
     )
+    monkeypatch.setattr(
+        composite_app.service_clients,
+        "request_json",
+        lambda method, url, payload=None, timeout=8: (
+            200,
+            {
+                "eventId": "evt-lifecycle",
+                "processed": 2,
+                "successful": 2,
+                "failed": 0,
+                "results": [
+                    {"ticketId": "2", "refundId": "re_123"},
+                    {"ticketId": "5", "refundId": "re_456"},
+                ],
+            },
+        ),
+    )
 
     edit_response = test_client.put(
         "/manager/events/evt-lifecycle",
@@ -768,3 +802,4 @@ def test_edit_and_cancel_manager_event_lifecycle(client, monkeypatch):
     assert cancel_response.get_json()["data"]["integration"]["refundFlow"]["eventRefundEndpoint"].endswith(
         "/refunds/event/evt-lifecycle"
     )
+    assert cancel_response.get_json()["data"]["integration"]["refundFlow"]["status"] == "completed"

@@ -1,5 +1,6 @@
 import os
-import uuid
+from pathlib import Path
+import json
 from datetime import datetime, timezone
 
 import psycopg2
@@ -8,6 +9,22 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 _db_initialized = False
+DEMO_STATE_PATH = Path(__file__).resolve().parents[1] / "demo" / "local_demo_state.json"
+
+
+def parse_positive_int(value, field_name):
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a positive integer")
+    if parsed <= 0:
+        raise ValueError(f"{field_name} must be a positive integer")
+    return parsed
+
+
+def load_demo_seed_data():
+    with DEMO_STATE_PATH.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
 
 # ---------------------------------------------------------------------------
 # Database connection
@@ -26,11 +43,10 @@ def init_db():
     """Create the tickets table if it does not exist yet."""
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS tickets (
-            ticket_id   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-            event_id    TEXT        NOT NULL,
+            ticket_id   BIGSERIAL   PRIMARY KEY,
+            event_id    BIGINT      NOT NULL,
             seat_row    TEXT,
             seat_number TEXT,
             seat_section TEXT,
@@ -43,6 +59,22 @@ def init_db():
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_tickets_event_id ON tickets (event_id);
     """)
+    cur.execute(
+        """
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'tickets'
+          AND column_name IN ('ticket_id', 'event_id')
+        """
+    )
+    column_types = {row["column_name"]: row["data_type"] for row in cur.fetchall()}
+    for column_name in ("ticket_id", "event_id"):
+        if column_types.get(column_name) != "bigint":
+            raise RuntimeError(
+                f"Incompatible ticket_atomic schema: tickets.{column_name} is "
+                f"{column_types.get(column_name)!r}. Reset the ticket-atomic database so the integer-ID schema can be applied."
+            )
     conn.commit()
     cur.close()
     conn.close()
@@ -56,6 +88,43 @@ def ensure_db_initialized():
     _db_initialized = True
 
 
+def reset_demo_tickets():
+    demo_state = load_demo_seed_data()
+    demo_tickets = demo_state["ticketAtomicTickets"]
+
+    ensure_db_initialized()
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("TRUNCATE TABLE tickets RESTART IDENTITY")
+    for ticket in demo_tickets:
+        cur.execute(
+            """
+            INSERT INTO tickets (ticket_id, event_id, seat_section, seat_row, seat_number, is_valid, issued_at, invalidated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                ticket["ticketId"],
+                ticket["eventId"],
+                (ticket.get("seat") or {}).get("section"),
+                (ticket.get("seat") or {}).get("row"),
+                (ticket.get("seat") or {}).get("number"),
+                ticket["isValid"],
+                ticket["issuedAt"],
+                ticket["invalidatedAt"],
+            ),
+        )
+
+    if demo_tickets:
+        cur.execute(
+            "SELECT setval(pg_get_serial_sequence('tickets', 'ticket_id'), %s, true)",
+            (max(ticket["ticketId"] for ticket in demo_tickets),),
+        )
+    conn.commit()
+    cur.close()
+    conn.close()
+    return len(demo_tickets)
+
+
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
@@ -63,7 +132,7 @@ def ensure_db_initialized():
 def ticket_to_dict(row):
     """Convert a DB row to a JSON-serialisable dict."""
     return {
-        "ticket_id":      str(row["ticket_id"]),
+        "ticket_id":      int(row["ticket_id"]),
         "event_id":       row["event_id"],
         "seat": {
             "section": row["seat_section"],
@@ -92,6 +161,12 @@ def health():
         return jsonify({"status": "error", "detail": str(exc)}), 500
 
 
+@app.route("/tickets/admin/reset-demo", methods=["POST"])
+def reset_ticket_demo():
+    count = reset_demo_tickets()
+    return jsonify({"status": "reset", "ticketCount": count}), 200
+
+
 # POST /tickets/issue
 @app.route("/tickets/issue", methods=["POST"])
 def issue_ticket():
@@ -99,16 +174,20 @@ def issue_ticket():
     Issue a new ticket.
 
     Body (JSON):
-        event_id       string  required
+        event_id       integer required
         seat_section   string  optional
         seat_row       string  optional
         seat_number    string  optional
     """
     data = request.get_json(silent=True) or {}
 
-    event_id = data.get("event_id")
-    if not event_id:
+    event_id_raw = data.get("event_id")
+    if event_id_raw is None:
         return jsonify({"error": "event_id is required"}), 400
+    try:
+        event_id = parse_positive_int(event_id_raw, "event_id")
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
 
     seat_section = data.get("seat_section")
     seat_row     = data.get("seat_row")
@@ -136,11 +215,11 @@ def issue_ticket():
 # GET /tickets/<ticket_id>
 @app.route("/tickets/<ticket_id>", methods=["GET"])
 def get_ticket(ticket_id):
-    """Fetch a single ticket by its UUID."""
+    """Fetch a single ticket by its integer ID."""
     try:
-        uuid.UUID(ticket_id)          # validate format early
-    except ValueError:
-        return jsonify({"error": "Invalid ticket_id format"}), 400
+        ticket_id = parse_positive_int(ticket_id, "ticket_id")
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
 
     ensure_db_initialized()
     conn = get_db()
@@ -160,6 +239,11 @@ def get_ticket(ticket_id):
 @app.route("/tickets/event/<event_id>", methods=["GET"])
 def get_tickets_by_event(event_id):
     """Return all tickets for a given event_id."""
+    try:
+        event_id = parse_positive_int(event_id, "event_id")
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
     ensure_db_initialized()
     conn = get_db()
     cur  = conn.cursor()
@@ -182,9 +266,9 @@ def invalidate_ticket(ticket_id):
     Returns 409 if the ticket is already invalid.
     """
     try:
-        uuid.UUID(ticket_id)
-    except ValueError:
-        return jsonify({"error": "Invalid ticket_id format"}), 400
+        ticket_id = parse_positive_int(ticket_id, "ticket_id")
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
 
     ensure_db_initialized()
     conn = get_db()

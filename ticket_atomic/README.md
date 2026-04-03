@@ -36,6 +36,7 @@ The repo root `docker-compose.yml` also includes:
 - `ticket-atomic-db` as its local Postgres dependency
 
 The purchase flow is wired to use this local service in the root stack, and refund/cancel flows propagate ticket invalidation through the purchase wrapper.
+This service is internal to the composites and is not intended to be called directly from the browser.
 
 ---
 
@@ -47,7 +48,7 @@ Issue a new ticket for an event.
 **Request body:**
 ```json
 {
-  "event_id": "evt_abc123",
+  "event_id": 123,
   "seat_section": "A",
   "seat_row": "3",
   "seat_number": "14"
@@ -59,8 +60,8 @@ Issue a new ticket for an event.
 **Response `201`:**
 ```json
 {
-  "ticket_id": "550e8400-e29b-41d4-a716-446655440000",
-  "event_id": "evt_abc123",
+  "ticket_id": 42,
+  "event_id": 123,
   "seat": { "section": "A", "row": "3", "number": "14" },
   "is_valid": true,
   "issued_at": "2026-03-24T10:00:00+00:00",
@@ -71,7 +72,7 @@ Issue a new ticket for an event.
 ---
 
 ### `GET /tickets/<ticket_id>`
-Fetch a single ticket by its UUID.
+Fetch a single ticket by its integer ID.
 
 **Response `200`:** ticket object (same shape as above)  
 **Response `404`:** ticket not found
@@ -84,7 +85,7 @@ Return all tickets for a given event.
 **Response `200`:**
 ```json
 [
-  { "ticket_id": "...", "event_id": "evt_abc123", ... },
+  { "ticket_id": 42, "event_id": 123, ... },
   ...
 ]
 ```

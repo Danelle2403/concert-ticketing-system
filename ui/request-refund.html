@@ -22,6 +22,9 @@
             <a href="request-refund.html" class="active">My Tickets</a>
             <span id="nav-user"></span>
         </div>
+        <div class="nav-actions">
+            <button type="button" id="nav-logout" class="btn-nav hidden" onclick="logoutUser('login.html')">Logout</button>
+        </div>
     </nav>
 
     <main class="container">
@@ -76,14 +79,17 @@
     <script>
 
         // Check login
-        const user = JSON.parse(sessionStorage.getItem("user"));
+        const user = getStoredUser();
+        const urlParams = new URLSearchParams(window.location.search);
         let selectedTicketId = null;
+        let selectedRefundSource = "customer_request";
 
         if (!user) {
             document.getElementById("loading").classList.add("hidden");
             document.getElementById("not-logged-in").classList.remove("hidden");
         } else {
             document.getElementById("nav-user").textContent = `👤 ${user.name}`;
+            document.getElementById("nav-logout").classList.remove("hidden");
             loadTickets();
         }
 
@@ -99,9 +105,34 @@
                 }
 
                 const list = document.getElementById("tickets-list");
+                list.innerHTML = "";
+
+                const uniqueEventIds = [...new Set(data.events.map((ticket) => ticket.eventId))];
+                const eventLookup = {};
+                await Promise.all(uniqueEventIds.map(async (eventId) => {
+                    try {
+                        eventLookup[eventId] = await getEventById(eventId);
+                    } catch (_error) {
+                        eventLookup[eventId] = null;
+                    }
+                }));
+
                 data.events.forEach(ticket => {
+                    const eventRecord = eventLookup[ticket.eventId];
+                    const refundState = deriveRefundState(ticket, eventRecord);
                     const card = document.createElement("div");
                     card.className = "ticket-card";
+                    const ticketIdArg = JSON.stringify(ticket.ticketId);
+                    const eventNameArg = JSON.stringify(ticket.eventName);
+                    const refundSourceArg = JSON.stringify(refundState.source);
+                    const modalMessageArg = JSON.stringify(refundState.modalMessage);
+                    if (
+                        urlParams.get("ticketId") === ticket.ticketId ||
+                        urlParams.get("eventId") === ticket.eventId
+                    ) {
+                        card.style.borderColor = "#0f172a";
+                        card.style.boxShadow = "0 16px 30px rgba(15, 23, 42, 0.12)";
+                    }
                     card.innerHTML = `
                         <div class="ticket-info">
                             <h3>${ticket.eventName}</h3>
@@ -111,14 +142,15 @@
                             <span class="ticket-status status-${ticket.status}">
                                 ${ticket.status}
                             </span>
+                            <p>${refundState.message}</p>
                         </div>
                         <div class="ticket-actions">
                             <button 
                                 class="btn-danger"
-                                onclick="openRefundModal('${ticket.ticketId}', '${ticket.eventName}')"
-                                ${ticket.status !== 'active' ? 'disabled' : ''}
+                                onclick="openRefundModal(${ticketIdArg}, ${eventNameArg}, ${refundSourceArg}, ${modalMessageArg})"
+                                ${refundState.canRefund ? '' : 'disabled'}
                             >
-                                Request Refund
+                                ${refundState.buttonLabel}
                             </button>
                         </div>
                     `;
@@ -132,19 +164,74 @@
         }
 
         // Open refund confirmation modal
-        function openRefundModal(ticketId, eventName) {
+        function deriveRefundState(ticket, eventRecord) {
+            const ticketStatus = String(ticket.status || "").toLowerCase();
+            if (ticketStatus !== "active") {
+                return {
+                    canRefund: false,
+                    buttonLabel: "Refunded / Closed",
+                    message: "This ticket is no longer refundable from the app.",
+                    source: "customer_request",
+                    modalMessage: ""
+                };
+            }
+
+            if (eventRecord && String(eventRecord.statusLabel || eventRecord.status || "").toUpperCase() === "CANCELLED") {
+                return {
+                    canRefund: true,
+                    buttonLabel: "Refund Cancelled Event",
+                    message: "This event has been cancelled. If the automatic refund has not completed yet, you can trigger it here.",
+                    source: "event_cancelled",
+                    modalMessage: `Trigger the refund for the cancelled event "${ticket.eventName}" now?`
+                };
+            }
+
+            const updatedEventDate = eventRecord && eventRecord.startAt ? String(eventRecord.startAt).slice(0, 10) : null;
+            if (updatedEventDate && ticket.date && updatedEventDate !== ticket.date) {
+                return {
+                    canRefund: true,
+                    buttonLabel: "Refund for Schedule Change",
+                    message: "This event date changed after purchase. You can request a refund if the new schedule no longer works for you.",
+                    source: "event_change_request",
+                    modalMessage: `Request a refund for "${ticket.eventName}" because the event details changed?`
+                };
+            }
+
+            if (!eventRecord) {
+                return {
+                    canRefund: true,
+                    buttonLabel: "Request Refund",
+                    message: "Event details could not be refreshed, but you can still submit a refund request from here.",
+                    source: "customer_request",
+                    modalMessage: `Request a refund for "${ticket.eventName}"?`
+                };
+            }
+
+            return {
+                canRefund: false,
+                buttonLabel: "Refund Unavailable",
+                message: "Refunds open here when an event is cancelled or rescheduled.",
+                source: "customer_request",
+                modalMessage: ""
+            };
+        }
+
+        function openRefundModal(ticketId, eventName, refundSource, modalMessage) {
             selectedTicketId = ticketId;
-            document.getElementById("modal-message").textContent =
+            selectedRefundSource = refundSource || "customer_request";
+            document.getElementById("modal-message").textContent = modalMessage ||
                 `Are you sure you want to refund your ticket for "${eventName}"?`;
             document.getElementById("refund-success").classList.add("hidden");
             document.getElementById("refund-error").classList.add("hidden");
             document.getElementById("refund-loading").classList.add("hidden");
             document.getElementById("refund-modal").classList.remove("hidden");
+            document.getElementById("confirm-refund-btn").disabled = false;
         }
 
         function closeModal() {
             document.getElementById("refund-modal").classList.add("hidden");
             selectedTicketId = null;
+            selectedRefundSource = "customer_request";
         }
 
         // REFUND — calls POST /refunds/ticketId via Refund Composite
@@ -155,7 +242,9 @@
             document.getElementById("confirm-refund-btn").disabled = true;
 
             try {
-                const data = await requestRefundByTicket(selectedTicketId);
+                const data = await requestRefundByTicket(selectedTicketId, {
+                    source: selectedRefundSource
+                });
                 document.getElementById("refund-loading").classList.add("hidden");
 
                 if (data && data.refundId) {
@@ -181,4 +270,3 @@
 
 </body>
 </html>
-

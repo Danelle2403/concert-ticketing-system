@@ -1,7 +1,12 @@
 const API_BASE = "http://localhost:8000";
+const USER_API_BASE = "http://localhost:5001";
 
 function buildUrl(path, query = {}) {
-    const url = new URL(`${API_BASE}${path}`);
+    return buildAbsoluteUrl(API_BASE, path, query);
+}
+
+function buildAbsoluteUrl(baseUrl, path, query = {}) {
+    const url = new URL(`${baseUrl}${path}`);
 
     Object.entries(query).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== "") {
@@ -13,34 +18,77 @@ function buildUrl(path, query = {}) {
 }
 
 async function apiRequest(path, options = {}) {
-    const { method = "GET", query, body } = options;
+    const {
+        method = "GET",
+        query,
+        body,
+        baseUrl = API_BASE,
+        timeoutMs = 15000
+    } = options;
     const requestOptions = { method, headers: {} };
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    requestOptions.signal = controller.signal;
 
     if (body !== undefined) {
         requestOptions.headers["Content-Type"] = "application/json";
         requestOptions.body = JSON.stringify(body);
     }
 
-    const response = await fetch(buildUrl(path, query), requestOptions);
-    const contentType = response.headers.get("content-type") || "";
-    const payload = contentType.includes("application/json")
-        ? await response.json()
-        : await response.text();
+    try {
+        const response = await fetch(buildAbsoluteUrl(baseUrl, path, query), requestOptions);
+        const contentType = response.headers.get("content-type") || "";
+        const payload = contentType.includes("application/json")
+            ? await response.json()
+            : await response.text();
 
-    if (!response.ok) {
-        const message =
-            payload?.error?.message ||
-            payload?.error ||
-            payload?.message ||
-            `Request failed with status ${response.status}`;
+        if (!response.ok) {
+            const message =
+                payload?.error?.message ||
+                payload?.error ||
+                payload?.message ||
+                `Request failed with status ${response.status}`;
 
-        const error = new Error(message);
-        error.status = response.status;
-        error.payload = payload;
+            const error = new Error(message);
+            error.status = response.status;
+            error.payload = payload;
+            throw error;
+        }
+
+        return payload;
+    } catch (error) {
+        if (error.name === "AbortError") {
+            const timeoutError = new Error("Request timed out. Please try again.");
+            timeoutError.status = 408;
+            throw timeoutError;
+        }
         throw error;
+    } finally {
+        window.clearTimeout(timeoutId);
     }
+}
 
-    return payload;
+function getStoredUser() {
+    try {
+        return JSON.parse(sessionStorage.getItem("user"));
+    } catch (_error) {
+        return null;
+    }
+}
+
+function storeUser(user) {
+    sessionStorage.setItem("user", JSON.stringify(user));
+}
+
+function clearStoredSession() {
+    ["user", "selectedEvent", "lastPurchase"].forEach((key) => {
+        sessionStorage.removeItem(key);
+    });
+}
+
+function logoutUser(redirectTo = "login.html") {
+    clearStoredSession();
+    window.location.href = redirectTo;
 }
 
 function formatVenueLabel(venue) {
@@ -115,26 +163,39 @@ function normalizeEventRecord(event) {
 
 // User Service
 async function loginUser(userId) {
-    return apiRequest(`/user/${userId}`);
+    return apiRequest(`/user/${userId}`, {
+        baseUrl: USER_API_BASE,
+        timeoutMs: 5000
+    });
 }
 
 async function registerUser(data) {
-    return apiRequest("/user/new", { method: "POST", body: data });
+    return apiRequest("/user/new", {
+        method: "POST",
+        body: data,
+        baseUrl: USER_API_BASE,
+        timeoutMs: 5000
+    });
 }
 
 async function getUserEvents(userId) {
-    return apiRequest("/user/events", { query: { userId } });
+    return apiRequest("/user/events", {
+        query: { userId },
+        baseUrl: USER_API_BASE,
+        timeoutMs: 5000
+    });
 }
 
 async function getManagingEvents(userId) {
-    const payload = await apiRequest("/events", {
+    const payload = await apiRequest("/manager/events", {
         query: {
-            managerId: userId,
-            includeConfig: true
+            managerId: userId
         }
     });
 
-    return (payload.data || []).map(normalizeEventRecord);
+    return ((payload?.data?.events) || []).map((eventRow) =>
+        normalizeEventRecord(eventRow.eventSummary || eventRow)
+    );
 }
 
 // Event Service via Kong
@@ -160,7 +221,7 @@ async function getEventById(eventId) {
 
 // Create/Edit Event Composite via Kong
 async function createManagerEvent(data) {
-    const payload = await apiRequest("/events/create", {
+    const payload = await apiRequest("/manager/events", {
         method: "POST",
         body: data
     });
@@ -169,7 +230,7 @@ async function createManagerEvent(data) {
 }
 
 async function updateEvent(eventId, data) {
-    const payload = await apiRequest(`/events/${eventId}/edit`, {
+    const payload = await apiRequest(`/manager/events/${eventId}`, {
         method: "PUT",
         body: data
     });
@@ -177,13 +238,32 @@ async function updateEvent(eventId, data) {
     return payload.data;
 }
 
-async function cancelEvent(eventId) {
-    return apiRequest(`/events/${eventId}/cancel`, {
-        method: "POST"
+async function cancelEvent(eventId, data) {
+    return apiRequest(`/manager/events/${eventId}/cancel`, {
+        method: "POST",
+        body: data
     });
 }
 
 // Purchase Composite
+async function getPurchaseConfig() {
+    return apiRequest("/purchase/config");
+}
+
+async function createCheckoutSession(data) {
+    return apiRequest("/purchase/checkout/session", {
+        method: "POST",
+        body: data
+    });
+}
+
+async function confirmCheckoutSession(data) {
+    return apiRequest("/purchase/checkout/confirm", {
+        method: "POST",
+        body: data
+    });
+}
+
 async function buyTicket(data) {
     return apiRequest("/purchase/checkout", {
         method: "POST",
@@ -196,14 +276,16 @@ async function getPurchaseStatus(purchaseId) {
 }
 
 // Refund Composite
-async function requestRefundByTicket(ticketId) {
+async function requestRefundByTicket(ticketId, data = {}) {
     return apiRequest(`/refunds/${ticketId}`, {
-        method: "POST"
+        method: "POST",
+        body: data
     });
 }
 
-async function requestRefundByEvent(eventId) {
+async function requestRefundByEvent(eventId, data = {}) {
     return apiRequest(`/refunds/event/${eventId}`, {
-        method: "POST"
+        method: "POST",
+        body: data
     });
 }

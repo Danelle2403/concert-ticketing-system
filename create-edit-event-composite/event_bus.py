@@ -52,31 +52,44 @@ def summarize_changes(before_event, after_event):
     return changes
 
 
-def build_refund_info(notification_type):
+def build_refund_info(notification_type, event_id=None, ui_base_url=None):
+    event_id = str(event_id or "").strip()
+    ui_base_url = str(ui_base_url or "").rstrip("/")
+    refund_page = (
+        f"{ui_base_url}/request-refund.html?eventId={event_id}&refundContext={notification_type}"
+        if ui_base_url and event_id
+        else None
+    )
+
     if notification_type == "event.cancelled":
         return {
             "requestRequired": False,
             "provider": "stripe",
-            "status": "planned",
+            "status": "processing",
+            "autoRefund": True,
             "message": (
-                "Refunds for cancelled events are intended to go back to the original "
-                "payment method through Stripe once the refund flow is enabled."
+                "Your refund is being processed automatically back to your original "
+                "payment method through Stripe. No separate request is needed."
             ),
+            "actionLabel": "View ticket status" if refund_page else None,
+            "actionUrl": refund_page,
         }
 
     return {
         "requestRequired": True,
         "provider": "stripe",
-        "status": "planned",
+        "status": "available",
+        "autoRefund": False,
         "message": (
-            "If the updated event details no longer work for you, you can request a refund. "
-            "Approved refunds are intended to be returned through Stripe to the original "
-            "payment method once the refund flow is enabled."
+            "If the updated date or venue no longer works for you, use the refund button "
+            "in My Tickets to return the ticket to your original payment method through Stripe."
         ),
+        "actionLabel": "Request a refund" if refund_page else None,
+        "actionUrl": refund_page,
     }
 
 
-def build_event_updated_message(before_event, after_event, manager):
+def build_event_updated_message(before_event, after_event, manager, ui_base_url=None):
     changes = summarize_changes(before_event, after_event)
     return {
         "type": "event.updated",
@@ -92,11 +105,13 @@ def build_event_updated_message(before_event, after_event, manager):
         "changes": changes,
         "eventBefore": _tracked_fields(before_event or {}),
         "eventAfter": _tracked_fields(after_event or {}),
-        "refundInfo": build_refund_info("event.updated"),
+        "refundInfo": build_refund_info(
+            "event.updated", after_event.get("id"), ui_base_url=ui_base_url
+        ),
     }
 
 
-def build_event_cancelled_message(before_event, after_event, manager):
+def build_event_cancelled_message(before_event, after_event, manager, ui_base_url=None):
     changes = summarize_changes(before_event, after_event)
     return {
         "type": "event.cancelled",
@@ -112,7 +127,9 @@ def build_event_cancelled_message(before_event, after_event, manager):
         "changes": changes,
         "eventBefore": _tracked_fields(before_event or {}),
         "eventAfter": _tracked_fields(after_event or {}),
-        "refundInfo": build_refund_info("event.cancelled"),
+        "refundInfo": build_refund_info(
+            "event.cancelled", after_event.get("id"), ui_base_url=ui_base_url
+        ),
     }
 
 

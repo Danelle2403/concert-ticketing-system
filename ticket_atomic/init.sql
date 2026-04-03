@@ -2,8 +2,8 @@
 -- Dashboard → SQL Editor → New Query → paste → Run
 
 CREATE TABLE IF NOT EXISTS tickets (
-    ticket_id       UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id        TEXT        NOT NULL,
+    ticket_id       BIGSERIAL   PRIMARY KEY,
+    event_id        BIGINT      NOT NULL,
     seat_row        TEXT,
     seat_number     TEXT,
     seat_section    TEXT,

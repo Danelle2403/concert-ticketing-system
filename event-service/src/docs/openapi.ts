@@ -50,7 +50,7 @@ export const openApiDocument = {
       Event: {
         type: "object",
         properties: {
-          id: { type: "string", format: "uuid" },
+          id: { type: "integer" },
           managerId: { type: "integer", nullable: true },
           title: { type: "string" },
           description: { type: "string" },
@@ -135,7 +135,7 @@ export const openApiDocument = {
       get: {
         tags: ["Events"],
         summary: "Get an event by ID",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "integer" } }],
         responses: {
           "200": { description: "Event details" },
           "404": { description: "Not found" }
@@ -144,7 +144,7 @@ export const openApiDocument = {
       put: {
         tags: ["Events"],
         summary: "Update event metadata",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "integer" } }],
         responses: {
           "200": { description: "Updated event" },
           "400": { description: "Validation failure" }
@@ -155,7 +155,7 @@ export const openApiDocument = {
       get: {
         tags: ["Events"],
         summary: "Get lightweight event summary",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "integer" } }],
         responses: {
           "200": { description: "Event summary" }
         }
@@ -165,7 +165,7 @@ export const openApiDocument = {
       put: {
         tags: ["Events"],
         summary: "Reschedule an event",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "integer" } }],
         responses: {
           "200": { description: "Rescheduled event" },
           "400": { description: "Invalid event state or payload" }
@@ -176,7 +176,7 @@ export const openApiDocument = {
       post: {
         tags: ["Events"],
         summary: "Cancel an event",
-        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "integer" } }],
         responses: {
           "200": { description: "Cancelled event" },
           "400": { description: "Invalid event state" }

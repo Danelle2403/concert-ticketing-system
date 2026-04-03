@@ -1,0 +1,428 @@
+{
+  "users": [
+    { "id": 1, "name": "Alice Fan", "email": "fan@example.com", "role": "fan" },
+    { "id": 2, "name": "Noah Fan", "email": "fan2@example.com", "role": "fan" },
+    { "id": 3, "name": "Chloe Fan", "email": "fan3@example.com", "role": "fan" },
+    { "id": 99, "name": "Maya Manager", "email": "manager@example.com", "role": "manager" },
+    { "id": 123, "name": "Legacy Fan", "email": "legacyfan@example.com", "role": "fan" }
+  ],
+  "managedEvents": [
+    {
+      "id": 1,
+      "managerId": 99,
+      "eventId": "1001",
+      "name": "The Midnight World Tour",
+      "venue": "Marina Bay Sands, Singapore",
+      "date": "2026-08-15",
+      "price": 88.0,
+      "status": "active"
+    },
+    {
+      "id": 2,
+      "managerId": 99,
+      "eventId": "1002",
+      "name": "Neon Bloom Live",
+      "venue": "Singapore Indoor Stadium",
+      "date": "2026-09-22",
+      "price": 98.0,
+      "status": "active"
+    },
+    {
+      "id": 3,
+      "managerId": 99,
+      "eventId": "1",
+      "name": "Pulse Arena Nights",
+      "venue": "Capitol Theatre, Singapore",
+      "date": "2026-04-18",
+      "price": 80.0,
+      "status": "active"
+    },
+    {
+      "id": 4,
+      "managerId": 99,
+      "eventId": "2",
+      "name": "Skyline VIP Session",
+      "venue": "Singapore Indoor Stadium",
+      "date": "2026-05-02",
+      "price": 200.0,
+      "status": "active"
+    },
+    {
+      "id": 5,
+      "managerId": 99,
+      "eventId": "789",
+      "name": "Harbour Lights Reunion",
+      "venue": "The Star Theatre, Singapore",
+      "date": "2026-03-10",
+      "price": 150.0,
+      "status": "cancelled"
+    }
+  ],
+  "userTickets": [
+    {
+      "id": 1,
+      "userId": 123,
+      "ticketId": "456",
+      "eventId": "789",
+      "eventName": "Harbour Lights Reunion",
+      "venue": "The Star Theatre, Singapore",
+      "date": "2026-03-10",
+      "status": "refunded"
+    },
+    {
+      "id": 2,
+      "userId": 1,
+      "ticketId": "1",
+      "eventId": "1",
+      "eventName": "Pulse Arena Nights",
+      "venue": "Capitol Theatre, Singapore",
+      "date": "2026-04-18",
+      "status": "cancelled"
+    },
+    {
+      "id": 3,
+      "userId": 2,
+      "ticketId": "2",
+      "eventId": "1",
+      "eventName": "Pulse Arena Nights",
+      "venue": "Capitol Theatre, Singapore",
+      "date": "2026-04-18",
+      "status": "active"
+    },
+    {
+      "id": 4,
+      "userId": 3,
+      "ticketId": "3",
+      "eventId": "2",
+      "eventName": "Skyline VIP Session",
+      "venue": "Singapore Indoor Stadium",
+      "date": "2026-05-02",
+      "status": "active"
+    }
+  ],
+  "eventServiceEvents": [
+    {
+      "id": 1,
+      "managerId": 99,
+      "title": "Pulse Arena Nights",
+      "description": "Order-aligned demo event.",
+      "status": "PUBLISHED",
+      "startAt": "2026-04-18T12:00:00.000Z",
+      "endAt": "2026-04-18T15:00:00.000Z",
+      "venue": {
+        "name": "Capitol Theatre",
+        "address": "17 Stamford Road",
+        "city": "Singapore",
+        "country": "Singapore"
+      },
+      "defaultSeatCategory": "STANDARD",
+      "changedBy": "manager-99",
+      "pricingTiers": [
+        { "code": "VIP", "name": "VIP", "price": 150.0, "currency": "SGD", "sortOrder": 0 },
+        { "code": "STANDARD", "name": "Standard", "price": 80.0, "currency": "SGD", "sortOrder": 1 }
+      ],
+      "seatSections": [
+        { "code": "VIP-A", "name": "VIP", "tierCode": "VIP", "capacity": 40, "sortOrder": 0, "metadata": {} },
+        { "code": "STD-A", "name": "Standard", "tierCode": "STANDARD", "capacity": 150, "sortOrder": 1, "metadata": {} }
+      ]
+    },
+    {
+      "id": 2,
+      "managerId": 99,
+      "title": "Skyline VIP Session",
+      "description": "Order-aligned VIP demo event.",
+      "status": "PUBLISHED",
+      "startAt": "2026-05-02T12:00:00.000Z",
+      "endAt": "2026-05-02T15:00:00.000Z",
+      "venue": {
+        "name": "Singapore Indoor Stadium",
+        "address": "2 Stadium Walk",
+        "city": "Singapore",
+        "country": "Singapore"
+      },
+      "defaultSeatCategory": "VIP",
+      "changedBy": "manager-99",
+      "pricingTiers": [
+        { "code": "VIP", "name": "VIP", "price": 200.0, "currency": "SGD", "sortOrder": 0 }
+      ],
+      "seatSections": [
+        { "code": "VIP-B", "name": "VIP", "tierCode": "VIP", "capacity": 60, "sortOrder": 0, "metadata": {} }
+      ]
+    },
+    {
+      "id": 789,
+      "managerId": 99,
+      "title": "Harbour Lights Reunion",
+      "description": "Cancelled demo event used for refund and replay flows.",
+      "status": "CANCELLED",
+      "startAt": "2026-03-10T12:00:00.000Z",
+      "endAt": "2026-03-10T15:00:00.000Z",
+      "venue": {
+        "name": "The Star Theatre",
+        "address": "1 Vista Exchange Green",
+        "city": "Singapore",
+        "country": "Singapore"
+      },
+      "defaultSeatCategory": "VIP",
+      "changedBy": "manager-99",
+      "pricingTiers": [
+        { "code": "VIP", "name": "VIP", "price": 150.0, "currency": "SGD", "sortOrder": 0 }
+      ],
+      "seatSections": [
+        { "code": "VIP-C", "name": "VIP", "tierCode": "VIP", "capacity": 80, "sortOrder": 0, "metadata": {} }
+      ]
+    },
+    {
+      "id": 1001,
+      "managerId": 99,
+      "title": "The Midnight World Tour",
+      "description": "Manager demo event.",
+      "status": "PUBLISHED",
+      "startAt": "2026-08-15T12:00:00.000Z",
+      "endAt": "2026-08-15T15:00:00.000Z",
+      "venue": {
+        "name": "Marina Bay Sands",
+        "address": "10 Bayfront Avenue",
+        "city": "Singapore",
+        "country": "Singapore"
+      },
+      "defaultSeatCategory": "CAT1",
+      "changedBy": "manager-99",
+      "pricingTiers": [
+        { "code": "VIP", "name": "VIP", "price": 188.0, "currency": "SGD", "sortOrder": 0 },
+        { "code": "CAT1", "name": "Category 1", "price": 128.0, "currency": "SGD", "sortOrder": 1 },
+        { "code": "CAT2", "name": "Category 2", "price": 88.0, "currency": "SGD", "sortOrder": 2 }
+      ],
+      "seatSections": [
+        { "code": "A1", "name": "Floor Left", "tierCode": "VIP", "capacity": 50, "sortOrder": 0, "metadata": {} },
+        { "code": "B1", "name": "Lower Bowl", "tierCode": "CAT1", "capacity": 120, "sortOrder": 1, "metadata": {} },
+        { "code": "C1", "name": "Upper Bowl", "tierCode": "CAT2", "capacity": 200, "sortOrder": 2, "metadata": {} }
+      ]
+    },
+    {
+      "id": 1002,
+      "managerId": 99,
+      "title": "Neon Bloom Live",
+      "description": "Manager demo event.",
+      "status": "PUBLISHED",
+      "startAt": "2026-09-22T12:30:00.000Z",
+      "endAt": "2026-09-22T15:30:00.000Z",
+      "venue": {
+        "name": "Singapore Indoor Stadium",
+        "address": "2 Stadium Walk",
+        "city": "Singapore",
+        "country": "Singapore"
+      },
+      "defaultSeatCategory": "CAT1",
+      "changedBy": "manager-99",
+      "pricingTiers": [
+        { "code": "VIP", "name": "VIP", "price": 198.0, "currency": "SGD", "sortOrder": 0 },
+        { "code": "CAT1", "name": "Category 1", "price": 138.0, "currency": "SGD", "sortOrder": 1 },
+        { "code": "CAT2", "name": "Category 2", "price": 98.0, "currency": "SGD", "sortOrder": 2 }
+      ],
+      "seatSections": [
+        { "code": "D1", "name": "Front Floor", "tierCode": "VIP", "capacity": 40, "sortOrder": 0, "metadata": {} },
+        { "code": "E1", "name": "Lower Tier", "tierCode": "CAT1", "capacity": 150, "sortOrder": 1, "metadata": {} },
+        { "code": "F1", "name": "Upper Tier", "tierCode": "CAT2", "capacity": 250, "sortOrder": 2, "metadata": {} }
+      ]
+    }
+  ],
+  "seatInventory": [
+    { "eventId": "1", "seatCategory": "VIP", "totalSeats": 40, "availableSeats": 40 },
+    { "eventId": "1", "seatCategory": "STANDARD", "totalSeats": 150, "availableSeats": 149 },
+    { "eventId": "2", "seatCategory": "VIP", "totalSeats": 60, "availableSeats": 59 },
+    { "eventId": "789", "seatCategory": "VIP", "totalSeats": 80, "availableSeats": 80 },
+    { "eventId": "1001", "seatCategory": "VIP", "totalSeats": 50, "availableSeats": 50 },
+    { "eventId": "1001", "seatCategory": "CAT1", "totalSeats": 120, "availableSeats": 120 },
+    { "eventId": "1001", "seatCategory": "CAT2", "totalSeats": 200, "availableSeats": 200 },
+    { "eventId": "1002", "seatCategory": "VIP", "totalSeats": 40, "availableSeats": 40 },
+    { "eventId": "1002", "seatCategory": "CAT1", "totalSeats": 150, "availableSeats": 150 },
+    { "eventId": "1002", "seatCategory": "CAT2", "totalSeats": 250, "availableSeats": 250 }
+  ],
+  "seatHolds": [
+    {
+      "holdId": "11111111-1111-1111-1111-111111111111",
+      "eventId": "789",
+      "seatCategory": "VIP",
+      "quantity": 1,
+      "status": "RELEASED",
+      "expiresAt": "2026-03-27 05:47:46",
+      "confirmedAt": "2026-03-27 05:42:46",
+      "releasedAt": "2026-03-27 21:25:49",
+      "releaseReason": "REFUND",
+      "createdAt": "2026-03-27 05:42:46",
+      "updatedAt": "2026-03-27 21:25:49"
+    },
+    {
+      "holdId": "22222222-2222-2222-2222-222222222222",
+      "eventId": "1",
+      "seatCategory": "VIP",
+      "quantity": 1,
+      "status": "RELEASED",
+      "expiresAt": "2026-03-27 21:20:59",
+      "confirmedAt": "2026-03-27 21:15:59",
+      "releasedAt": "2026-03-27 21:26:14",
+      "releaseReason": "ORDER_CANCELLED",
+      "createdAt": "2026-03-27 21:15:59",
+      "updatedAt": "2026-03-27 21:26:14"
+    },
+    {
+      "holdId": "33333333-3333-3333-3333-333333333333",
+      "eventId": "1",
+      "seatCategory": "STANDARD",
+      "quantity": 1,
+      "status": "CONFIRMED",
+      "expiresAt": "2026-12-31 23:59:59",
+      "confirmedAt": "2026-03-27 21:16:23",
+      "releasedAt": null,
+      "releaseReason": null,
+      "createdAt": "2026-03-27 21:16:23",
+      "updatedAt": "2026-03-27 21:16:23"
+    },
+    {
+      "holdId": "44444444-4444-4444-4444-444444444444",
+      "eventId": "2",
+      "seatCategory": "VIP",
+      "quantity": 1,
+      "status": "CONFIRMED",
+      "expiresAt": "2026-12-31 23:59:59",
+      "confirmedAt": "2026-03-27 21:16:49",
+      "releasedAt": null,
+      "releaseReason": null,
+      "createdAt": "2026-03-27 21:16:49",
+      "updatedAt": "2026-03-27 21:16:49"
+    }
+  ],
+  "ticketAtomicTickets": [
+    {
+      "ticketId": 456,
+      "eventId": 789,
+      "seat": { "section": null, "row": null, "number": null },
+      "isValid": false,
+      "issuedAt": "2026-03-27T05:42:46+00:00",
+      "invalidatedAt": "2026-03-27T21:25:49+00:00"
+    },
+    {
+      "ticketId": 1,
+      "eventId": 1,
+      "seat": { "section": null, "row": null, "number": null },
+      "isValid": false,
+      "issuedAt": "2026-03-27T21:15:59+00:00",
+      "invalidatedAt": "2026-03-27T21:26:14+00:00"
+    },
+    {
+      "ticketId": 2,
+      "eventId": 1,
+      "seat": { "section": null, "row": null, "number": null },
+      "isValid": true,
+      "issuedAt": "2026-03-27T21:16:23+00:00",
+      "invalidatedAt": null
+    },
+    {
+      "ticketId": 3,
+      "eventId": 2,
+      "seat": { "section": null, "row": null, "number": null },
+      "isValid": true,
+      "issuedAt": "2026-03-27T21:16:49+00:00",
+      "invalidatedAt": null
+    }
+  ],
+  "orderDemoOrders": [
+    {
+      "purchaseId": "ORDER-DEMO-1",
+      "defaultOrderId": 1,
+      "userId": 123,
+      "ticketId": "456",
+      "ticketIdInt": 456,
+      "eventId": "789",
+      "eventIdInt": 789,
+      "quantity": 1,
+      "seatCategory": "VIP",
+      "orderSeatCategory": "VIP",
+      "purchaseStatus": "REFUNDED",
+      "orderStatus": "REFUNDED",
+      "paymentChargeId": "ch_stripe_abc",
+      "paymentIntentId": "pi_demo_789",
+      "amountPaid": 150.0,
+      "currency": "sgd",
+      "holdId": "11111111-1111-1111-1111-111111111111",
+      "eventName": "Harbour Lights Reunion",
+      "venue": "The Star Theatre, Singapore",
+      "date": "2026-03-10",
+      "createdAt": "2026-03-27T05:42:46+00:00",
+      "updatedAt": "2026-03-27T21:25:49+00:00"
+    },
+    {
+      "purchaseId": "ORDER-DEMO-2",
+      "defaultOrderId": 2,
+      "userId": 1,
+      "ticketId": "1",
+      "ticketIdInt": 1,
+      "eventId": "1",
+      "eventIdInt": 1,
+      "quantity": 1,
+      "seatCategory": "VIP",
+      "orderSeatCategory": "VIP",
+      "purchaseStatus": "CANCELLED",
+      "orderStatus": "CANCELLED",
+      "paymentChargeId": "ch_stripe_abc123",
+      "paymentIntentId": "pi_demo_1_cancelled",
+      "amountPaid": 150.0,
+      "currency": "sgd",
+      "holdId": "22222222-2222-2222-2222-222222222222",
+      "eventName": "Pulse Arena Nights",
+      "venue": "Capitol Theatre, Singapore",
+      "date": "2026-04-18",
+      "createdAt": "2026-03-27T21:15:59+00:00",
+      "updatedAt": "2026-03-27T21:26:14+00:00"
+    },
+    {
+      "purchaseId": "ORDER-DEMO-3",
+      "defaultOrderId": 3,
+      "userId": 2,
+      "ticketId": "2",
+      "ticketIdInt": 2,
+      "eventId": "1",
+      "eventIdInt": 1,
+      "quantity": 1,
+      "seatCategory": "STANDARD",
+      "orderSeatCategory": "Standard",
+      "purchaseStatus": "SUCCESS",
+      "orderStatus": "CONFIRMED",
+      "paymentChargeId": "ch_stripe_def456",
+      "paymentIntentId": "pi_demo_1_active",
+      "amountPaid": 80.0,
+      "currency": "sgd",
+      "holdId": "33333333-3333-3333-3333-333333333333",
+      "eventName": "Pulse Arena Nights",
+      "venue": "Capitol Theatre, Singapore",
+      "date": "2026-04-18",
+      "createdAt": "2026-03-27T21:16:23+00:00",
+      "updatedAt": "2026-03-27T21:16:23+00:00"
+    },
+    {
+      "purchaseId": "ORDER-DEMO-4",
+      "defaultOrderId": 4,
+      "userId": 3,
+      "ticketId": "3",
+      "ticketIdInt": 3,
+      "eventId": "2",
+      "eventIdInt": 2,
+      "quantity": 1,
+      "seatCategory": "VIP",
+      "orderSeatCategory": "VIP",
+      "purchaseStatus": "SUCCESS",
+      "orderStatus": "CONFIRMED",
+      "paymentChargeId": "ch_stripe_ghi789",
+      "paymentIntentId": "pi_demo_2_active",
+      "amountPaid": 200.0,
+      "currency": "sgd",
+      "holdId": "44444444-4444-4444-4444-444444444444",
+      "eventName": "Skyline VIP Session",
+      "venue": "Singapore Indoor Stadium",
+      "date": "2026-05-02",
+      "createdAt": "2026-03-27T21:16:49+00:00",
+      "updatedAt": "2026-03-27T21:16:49+00:00"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 
 import { asyncHandler } from "../lib/async-handler";
+import { loadDemoState } from "../lib/demo-state";
 import { sendSuccess } from "../lib/responses";
 import { openApiDocument } from "../docs/openapi";
 import { Queryable, TransactionalQueryable } from "../db/pool";
@@ -11,6 +12,7 @@ import {
   getEventById,
   getEventSummary,
   listEvents,
+  resetDemoEvents,
   rescheduleEvent,
   updateEvent
 } from "../repositories/event-repository";
@@ -23,12 +25,32 @@ import {
 } from "../validation/event-schemas";
 import { ApiError } from "../errors";
 
+const parseIdParam = (rawValue: string | string[]): number => {
+  if (Array.isArray(rawValue)) {
+    throw new ApiError(400, "VALIDATION_ERROR", "Event ID must be a positive integer");
+  }
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new ApiError(400, "VALIDATION_ERROR", "Event ID must be a positive integer");
+  }
+  return parsed;
+};
+
 export const buildEventRouter = (db: Queryable & TransactionalQueryable): Router => {
   const router = Router();
 
   router.get(
     "/health",
     asyncHandler(async (_req, res) => sendSuccess(res, { status: "Event Service is running" }))
+  );
+
+  router.post(
+    "/admin/reset-demo",
+    asyncHandler(async (_req, res) => {
+      const demoState = loadDemoState();
+      await resetDemoEvents(db, demoState.eventServiceEvents);
+      return sendSuccess(res, { status: "reset", eventCount: demoState.eventServiceEvents.length });
+    })
   );
 
   router.get(
@@ -57,7 +79,7 @@ export const buildEventRouter = (db: Queryable & TransactionalQueryable): Router
   router.get(
     "/events/:id",
     asyncHandler(async (req, res) => {
-      const event = await getEventById(db, String(req.params.id));
+      const event = await getEventById(db, parseIdParam(req.params.id));
       if (!event) {
         throw new ApiError(404, "EVENT_NOT_FOUND", "Event not found");
       }
@@ -68,7 +90,7 @@ export const buildEventRouter = (db: Queryable & TransactionalQueryable): Router
   router.get(
     "/events/:id/summary",
     asyncHandler(async (req, res) => {
-      const event = await getEventSummary(db, String(req.params.id));
+      const event = await getEventSummary(db, parseIdParam(req.params.id));
       if (!event) {
         throw new ApiError(404, "EVENT_NOT_FOUND", "Event not found");
       }
@@ -95,7 +117,7 @@ export const buildEventRouter = (db: Queryable & TransactionalQueryable): Router
       if (!parsed.success) {
         throw new ApiError(400, "VALIDATION_ERROR", "Invalid event payload", parsed.error.flatten());
       }
-      const event = await updateEvent(db, String(req.params.id), parsed.data);
+      const event = await updateEvent(db, parseIdParam(req.params.id), parsed.data);
       return sendSuccess(res, event, 200, "Event updated");
     })
   );
@@ -112,7 +134,7 @@ export const buildEventRouter = (db: Queryable & TransactionalQueryable): Router
           parsed.error.flatten()
         );
       }
-      const event = await rescheduleEvent(db, String(req.params.id), parsed.data);
+      const event = await rescheduleEvent(db, parseIdParam(req.params.id), parsed.data);
       return sendSuccess(res, event, 200, "Event rescheduled");
     })
   );
@@ -124,7 +146,7 @@ export const buildEventRouter = (db: Queryable & TransactionalQueryable): Router
       if (!parsed.success) {
         throw new ApiError(400, "VALIDATION_ERROR", "Invalid cancel payload", parsed.error.flatten());
       }
-      const event = await cancelEvent(db, String(req.params.id), parsed.data);
+      const event = await cancelEvent(db, parseIdParam(req.params.id), parsed.data);
       return sendSuccess(res, event, 200, "Event cancelled");
     })
   );

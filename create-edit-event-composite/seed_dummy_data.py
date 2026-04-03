@@ -1,5 +1,7 @@
 import os
+from pathlib import Path
 import sys
+import json
 
 import requests
 
@@ -9,6 +11,51 @@ USER_SERVICE_URL = os.environ.get("USER_SERVICE_URL", "http://localhost:5001")
 SEAT_INVENTORY_URL = os.environ.get("SEAT_INVENTORY_URL", "http://localhost:5004")
 MANAGER_EMAIL = os.environ.get("MANAGER_EMAIL", "manager@example.com")
 MANAGER_NAME = os.environ.get("MANAGER_NAME", "Maya Manager")
+DEMO_STATE_PATH = Path(__file__).resolve().parents[1] / "demo" / "local_demo_state.json"
+
+
+def load_demo_state():
+    with DEMO_STATE_PATH.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def build_sample_payloads(manager_id):
+    demo_state = load_demo_state()
+    samples = []
+    for event in demo_state["eventServiceEvents"]:
+        if int(event["id"]) not in {1001, 1002}:
+            continue
+        samples.append(
+            {
+                "title": f"Composite Demo: {event['title']}",
+                "description": event["description"],
+                "startAt": event["startAt"],
+                "endAt": event["endAt"],
+                "venue": event["venue"],
+                "pricingTiers": [
+                    {
+                        "code": tier["code"],
+                        "name": tier["name"],
+                        "price": tier["price"],
+                        "currency": tier["currency"],
+                    }
+                    for tier in event["pricingTiers"]
+                ],
+                "seatSections": [
+                    {
+                        "code": section["code"],
+                        "name": section["name"],
+                        "tierCode": section["tierCode"],
+                        "capacity": section["capacity"],
+                    }
+                    for section in event["seatSections"]
+                ],
+                "status": event["status"],
+                "managerId": manager_id,
+                "changedBy": f"manager-{manager_id}",
+            }
+        )
+    return samples
 
 
 def req_json(method, url, payload=None, timeout=10):
@@ -70,59 +117,7 @@ def seed_event(payload):
 def main():
     manager_id = ensure_manager()
     existing_titles = list_existing_titles(manager_id)
-
-    samples = [
-        {
-            "title": "Composite Demo: Midnight World Tour",
-            "description": "Dummy seeded through the create/edit event composite.",
-            "startAt": "2026-08-15T12:00:00.000Z",
-            "endAt": "2026-08-15T15:00:00.000Z",
-            "venue": {
-                "name": "Marina Bay Sands",
-                "address": "10 Bayfront Avenue",
-                "city": "Singapore",
-                "country": "Singapore",
-            },
-            "pricingTiers": [
-                {"code": "VIP", "name": "VIP", "price": 188, "currency": "SGD"},
-                {"code": "CAT1", "name": "Category 1", "price": 128, "currency": "SGD"},
-                {"code": "CAT2", "name": "Category 2", "price": 88, "currency": "SGD"},
-            ],
-            "seatSections": [
-                {"code": "A1", "name": "Floor Left", "tierCode": "VIP", "capacity": 50},
-                {"code": "B1", "name": "Lower Bowl", "tierCode": "CAT1", "capacity": 120},
-                {"code": "C1", "name": "Upper Bowl", "tierCode": "CAT2", "capacity": 200},
-            ],
-            "status": "PUBLISHED",
-            "managerId": manager_id,
-            "changedBy": f"manager-{manager_id}",
-        },
-        {
-            "title": "Composite Demo: Neon Bloom Live",
-            "description": "Second dummy event seeded through the composite.",
-            "startAt": "2026-09-22T12:30:00.000Z",
-            "endAt": "2026-09-22T15:30:00.000Z",
-            "venue": {
-                "name": "Singapore Indoor Stadium",
-                "address": "2 Stadium Walk",
-                "city": "Singapore",
-                "country": "Singapore",
-            },
-            "pricingTiers": [
-                {"code": "VIP", "name": "VIP", "price": 198, "currency": "SGD"},
-                {"code": "CAT1", "name": "Category 1", "price": 138, "currency": "SGD"},
-                {"code": "CAT2", "name": "Category 2", "price": 98, "currency": "SGD"},
-            ],
-            "seatSections": [
-                {"code": "D1", "name": "Front Floor", "tierCode": "VIP", "capacity": 40},
-                {"code": "E1", "name": "Lower Tier", "tierCode": "CAT1", "capacity": 150},
-                {"code": "F1", "name": "Upper Tier", "tierCode": "CAT2", "capacity": 250},
-            ],
-            "status": "PUBLISHED",
-            "managerId": manager_id,
-            "changedBy": f"manager-{manager_id}",
-        },
-    ]
+    samples = build_sample_payloads(manager_id)
 
     for payload in samples:
         if payload["title"] in existing_titles:
