@@ -201,8 +201,7 @@ async function registerUser(data) {
 
 async function getAuthenticatedUser() {
     return apiRequest("/auth/me", {
-        baseUrl: USER_API_BASE,
-        headers: getAuthHeaders(),
+        baseUrl: API_BASE,
         timeoutMs: 5000
     });
 }
@@ -210,7 +209,6 @@ async function getAuthenticatedUser() {
 async function getUserEvents(userId) {
     return apiRequest("/user/events", {
         query: { userId },
-        baseUrl: USER_API_BASE,
         timeoutMs: 5000
     });
 }

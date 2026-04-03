@@ -2,6 +2,7 @@ from copy import deepcopy
 from pathlib import Path
 import sys
 
+import jwt
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -338,7 +339,9 @@ class FakeUserDB:
 def client(monkeypatch):
     db = FakeUserDB()
     monkeypatch.setattr(user_app, "_user_auth_schema_checked", False)
-    monkeypatch.setenv("AUTH_TOKEN_SECRET", "test-auth-secret")
+    monkeypatch.setenv("AUTH_TOKEN_SECRET", "test-auth-secret-at-least-32-bytes")
+    monkeypatch.setattr(user_app, "AUTH_TOKEN_SECRET", "test-auth-secret-at-least-32-bytes")
+    monkeypatch.setattr(user_app, "AUTH_TOKEN_ISSUER", "test-concert-hub-ui")
     monkeypatch.setattr(user_app, "get_db", lambda: db)
     return user_app.app.test_client(), db
 
@@ -463,6 +466,15 @@ def test_auth_register_and_login_use_email_password(client):
     assert login_payload["email"] == "newfan@example.com"
     assert login_payload["userId"] == register_payload["userId"]
     assert login_payload["authToken"]
+    claims = jwt.decode(
+        login_payload["authToken"],
+        user_app.AUTH_TOKEN_SECRET,
+        algorithms=[user_app.AUTH_TOKEN_ALGORITHM],
+        issuer=user_app.AUTH_TOKEN_ISSUER,
+    )
+    assert claims["iss"] == user_app.AUTH_TOKEN_ISSUER
+    assert claims["role"] == "fan"
+    assert claims["userId"] == register_payload["userId"]
 
     session = test_client.get(
         "/auth/me",

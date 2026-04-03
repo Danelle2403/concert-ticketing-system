@@ -49,6 +49,8 @@ services:
       - DB_USER=root
       - DB_PASSWORD=root
       - DB_NAME=user_db
+      - AUTH_TOKEN_ISSUER=${AUTH_TOKEN_ISSUER:-concert-hub-ui}
+      - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET:-concert-hub-local-dev-secret-2026}
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-concert-hub-internal-dev-token}
       - FLASK_DEBUG=0
       - FLASK_USE_RELOADER=0

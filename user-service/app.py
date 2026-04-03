@@ -1,13 +1,14 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import json
+import jwt
 import mysql.connector
 import os
 from pathlib import Path
 import re
 import secrets
 import time
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from datetime import datetime, timedelta, timezone
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
@@ -17,7 +18,13 @@ DB_CONNECT_RETRIES = int(os.environ.get("DB_CONNECT_RETRIES", "15"))
 DB_CONNECT_RETRY_DELAY_SECONDS = float(os.environ.get("DB_CONNECT_RETRY_DELAY_SECONDS", "1"))
 DB_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5"))
 AUTH_TOKEN_MAX_AGE_SECONDS = int(os.environ.get("AUTH_TOKEN_MAX_AGE_SECONDS", "604800"))
-AUTH_TOKEN_SALT = "concert-hub-auth"
+AUTH_TOKEN_ISSUER = os.environ.get("AUTH_TOKEN_ISSUER", "concert-hub-ui")
+AUTH_TOKEN_SECRET = (
+    os.environ.get("AUTH_TOKEN_SECRET")
+    or os.environ.get("FLASK_SECRET_KEY")
+    or "concert-hub-local-dev-secret-2026"
+)
+AUTH_TOKEN_ALGORITHM = "HS256"
 INTERNAL_SERVICE_TOKEN = os.environ.get(
     "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
 )
@@ -91,24 +98,22 @@ def validate_password(value):
     return password
 
 
-def get_auth_serializer():
-    secret = (
-        os.environ.get("AUTH_TOKEN_SECRET")
-        or os.environ.get("FLASK_SECRET_KEY")
-        or "concert-hub-local-dev-secret"
-    )
-    return URLSafeTimedSerializer(secret_key=secret)
-
-
 def issue_auth_token(user):
     user_id = user.get("userId", user.get("id"))
-    return get_auth_serializer().dumps(
-        {
-            "userId": int(user_id),
-            "email": normalize_email(user.get("email")),
-            "role": user.get("role"),
-        },
-        salt=AUTH_TOKEN_SALT,
+    issued_at = datetime.now(timezone.utc)
+    payload = {
+        "iss": AUTH_TOKEN_ISSUER,
+        "sub": str(int(user_id)),
+        "userId": int(user_id),
+        "email": normalize_email(user.get("email")),
+        "role": user.get("role"),
+        "iat": issued_at,
+        "exp": issued_at + timedelta(seconds=AUTH_TOKEN_MAX_AGE_SECONDS),
+    }
+    return jwt.encode(
+        payload,
+        AUTH_TOKEN_SECRET,
+        algorithm=AUTH_TOKEN_ALGORITHM,
     )
 
 
@@ -133,10 +138,11 @@ def authenticate_request():
         if not token:
             return None
 
-        claims = get_auth_serializer().loads(
+        claims = jwt.decode(
             token,
-            salt=AUTH_TOKEN_SALT,
-            max_age=AUTH_TOKEN_MAX_AGE_SECONDS,
+            AUTH_TOKEN_SECRET,
+            algorithms=[AUTH_TOKEN_ALGORITHM],
+            issuer=AUTH_TOKEN_ISSUER,
         )
         user_id = parse_int(claims.get("userId"), "userId")
 
@@ -152,7 +158,7 @@ def authenticate_request():
             return None
 
         return normalize_user(user)
-    except (BadSignature, SignatureExpired, TypeError, ValueError):
+    except (jwt.InvalidTokenError, TypeError, ValueError):
         return None
     finally:
         if db:
