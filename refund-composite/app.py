@@ -138,6 +138,21 @@ def normalize_source(value):
     return source if source in allowed else "customer_request"
 
 
+def normalize_ticket_status(value):
+    return str(value or "").strip().lower()
+
+
+def is_terminal_ticket_status(value):
+    return normalize_ticket_status(value) in {"refunded", "cancelled"}
+
+
+def can_refund_ticket_status(value, source):
+    status = normalize_ticket_status(value)
+    if source == "event_cancelled":
+        return bool(status) and not is_terminal_ticket_status(status)
+    return status == "active"
+
+
 def to_minor_units(amount):
     return int(round(float(amount or 0) * 100))
 
@@ -230,7 +245,7 @@ def refund_single(ticket_id, source="customer_request", reason=None):
     if code != 200:
         return False, {"error": "Ticket not found", "ticketId": ticket_id}, 404
 
-    if str(ticket.get("status") or "").lower() != "active":
+    if not can_refund_ticket_status(ticket.get("status"), source):
         return False, {"error": "Ticket is not active", "ticketId": ticket_id}, 409
 
     code, mapping = req_json("GET", f"{PURCHASE_SERVICE_URL}/purchase/ticket/{ticket_id}")
@@ -364,6 +379,7 @@ def refund_ticket(ticketId):
 def refund_event(eventId):
     payload = request.get_json(silent=True) or {}
     eventId = normalize_event_id(eventId)
+    refund_source = normalize_source(payload.get("source") or "event_cancelled")
     if not has_internal_service_access():
         auth_user, error_response = require_authenticated_manager()
         if error_response:
@@ -377,12 +393,16 @@ def refund_event(eventId):
 
     code, data = req_json(
         "GET",
-        f"{USER_SERVICE_URL}/user/tickets/by-event/{eventId}?status=active",
+        f"{USER_SERVICE_URL}/user/tickets/by-event/{eventId}",
     )
     if code != 200:
         return jsonify({"error": "Unable to fetch tickets for event"}), 500
 
-    tickets = data.get("tickets", [])
+    tickets = [
+        ticket
+        for ticket in data.get("tickets", [])
+        if can_refund_ticket_status(ticket.get("status"), refund_source)
+    ]
     results = []
     success = 0
 
@@ -390,7 +410,7 @@ def refund_event(eventId):
         tid = ticket.get("ticketId")
         ok, refund_payload, _ = refund_single(
             tid,
-            source=payload.get("source") or "event_cancelled",
+            source=refund_source,
             reason=payload.get("reason"),
         )
         if ok:

@@ -220,9 +220,33 @@ async function getManagingEvents(userId) {
         }
     });
 
-    return ((payload?.data?.events) || []).map((eventRow) =>
-        normalizeEventRecord(eventRow.eventSummary || eventRow)
-    );
+    const eventRows = (payload?.data?.events) || [];
+
+    const hydratedEvents = await Promise.all(eventRows.map(async (eventRow) => {
+        const summary = eventRow.eventSummary || eventRow || {};
+        const eventId = eventRow.eventId ?? summary.id ?? summary.eventId;
+
+        const alreadyHasConfiguration =
+            Array.isArray(summary.pricingTiers) && Array.isArray(summary.seatSections);
+
+        if (!eventId || alreadyHasConfiguration) {
+            return normalizeEventRecord(summary);
+        }
+
+        try {
+            const detail = await getEventById(eventId);
+            return normalizeEventRecord({
+                ...summary,
+                ...detail,
+                id: detail.id ?? eventId,
+                status: eventRow.eventStatus || detail.statusLabel || summary.status
+            });
+        } catch (_error) {
+            return normalizeEventRecord(summary);
+        }
+    }));
+
+    return hydratedEvents;
 }
 
 // Event Service via Kong

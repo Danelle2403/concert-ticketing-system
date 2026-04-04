@@ -81,6 +81,50 @@ def test_build_email_content_includes_refund_guidance_for_updated_event():
     assert "Refund info:" in html
 
 
+def test_build_subject_uses_refund_event_title():
+    payload = {
+        "type": "refund.success",
+        "event": {
+            "eventId": "1",
+            "title": "Pulse Arena Nights",
+        },
+        "ticketId": "457",
+        "refundId": "re_123",
+    }
+
+    subject = notification_app.build_subject(payload)
+
+    assert subject == "Refund confirmed: Pulse Arena Nights"
+
+
+def test_refund_failure_cancelled_event_mentions_manager_follow_up():
+    payload = {
+        "type": "refund.failure",
+        "source": "event_cancelled",
+        "event": {
+            "eventId": "2",
+            "title": "Skyline VIP Session",
+        },
+        "ticketId": "3",
+        "amountPaid": 200.0,
+        "currency": "sgd",
+        "supportEmail": "support@concerthub.local",
+        "manager": {
+            "name": "Maya Manager",
+            "email": "manager@example.com",
+        },
+    }
+
+    plain_text = notification_app.build_plain_text_body(payload, "Chloe Fan")
+    html = notification_app.build_html_body(payload, "Chloe Fan")
+
+    assert "automatic refund" in plain_text
+    assert "Maya Manager <manager@example.com>" in plain_text
+    assert "will follow up manually" in plain_text
+    assert "manager@example.com" in html
+    assert "automatic refund" in html
+
+
 def test_direct_cancelled_dispatch_uses_cancelled_payload(monkeypatch):
     flask_app = notification_app.create_app(
         {

@@ -271,8 +271,8 @@
                 if (data && (data.refundId || data.status === "refunded")) {
                     successBox.classList.remove("hidden");
                     detailBox.textContent = data.refundId
-                        ? `Refund ${data.refundId} completed. Updating your tickets now.`
-                        : "Refund completed. Updating your tickets now.";
+                        ? `Refund ${data.refundId} completed. Check your email for more information. Updating your tickets now.`
+                        : "Refund completed. Check your email for more information. Updating your tickets now.";
                     setTimeout(() => {
                         closeModal();
                         location.reload();

@@ -2070,6 +2070,13 @@ a:hover { color: var(--text-primary); }
     align-items: stretch;
 }
 
+.manager-status-pill {
+    justify-content: center;
+    min-height: 48px;
+    width: 100%;
+    text-align: center;
+}
+
 .event-card-topline {
     display: flex;
     align-items: center;

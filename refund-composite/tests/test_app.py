@@ -106,11 +106,12 @@ def test_refund_single_normalizes_prefixed_ticket_and_updates_downstream_service
     assert state["notifications"][0]["refundId"] == "re_123"
 
 
-def test_refund_event_batches_active_tickets_for_normalized_event(client, monkeypatch):
+def test_refund_event_batches_non_terminal_tickets_for_cancelled_event(client, monkeypatch):
     state = {
         "tickets": {
             "2": {"ticketId": "2", "eventId": "1", "userId": 2, "status": "active"},
-            "5": {"ticketId": "5", "eventId": "1", "userId": 1, "status": "active"},
+            "5": {"ticketId": "5", "eventId": "1", "userId": 1, "status": "pending_refund"},
+            "6": {"ticketId": "6", "eventId": "1", "userId": 1, "status": "cancelled"},
         },
         "users": {
             "1": {"id": 1, "name": "Alice Fan", "email": "fan@example.com"},
@@ -149,8 +150,8 @@ def test_refund_event_batches_active_tickets_for_normalized_event(client, monkey
     }
 
     def _req_json(method, url, payload=None, timeout=8):
-        if method == "GET" and url.endswith("/user/tickets/by-event/1?status=active"):
-            return 200, {"tickets": [dict(state["tickets"]["2"]), dict(state["tickets"]["5"])]}
+        if method == "GET" and url.endswith("/user/tickets/by-event/1"):
+            return 200, {"tickets": [dict(state["tickets"]["2"]), dict(state["tickets"]["5"]), dict(state["tickets"]["6"])]}
         if method == "GET" and url.endswith("/user/ticket/2"):
             return 200, dict(state["tickets"]["2"])
         if method == "GET" and url.endswith("/user/ticket/5"):
