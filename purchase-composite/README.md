@@ -17,7 +17,6 @@ Scenario orchestration service for checkout, Stripe payment verification, extern
 
 ## Current limitations
 
-- the external OrderService still expects prefixed fan and concert IDs, so normalization is still in place
 - local order-aligned demo events `1`, `2`, and `789` are still fallback records inside this wrapper
 - purchase confirmation currently relies on client confirmation plus server-side PaymentIntent verification; webhook-based reconciliation is still a future hardening step
 
@@ -32,16 +31,18 @@ Scenario orchestration service for checkout, Stripe payment verification, extern
 - `GET /purchase/ticket/<ticketId>`
 - `POST /purchase/ticket/<ticketId>/status`
 
+Public browser routes through Kong require `Authorization: Bearer <jwt>`.
+Internal ticket mapping routes require `X-Internal-Service-Token`.
+
 ## Run
 
 The browser should reach this service through Kong at `http://localhost:8000/purchase`.
 The direct container port `http://localhost:5010` is for internal calls, health checks, and debugging.
 
-Before using the order-aligned demo flow, seed:
+Before using the order-aligned demo flow, reset the shared demo fixture:
 
 ```bash
-curl -X POST http://localhost:5001/user/seed
-curl -X POST http://localhost:5004/inventory/admin/seed-order-demo
+python3 ../scripts/reset_local_demo_state.py
 ```
 
 ## Local tests

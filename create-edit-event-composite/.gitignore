@@ -2,3 +2,11 @@ __pycache__/
 .pytest_cache/
 .venv/
 data/
+.env
+.env.local
+*.pyc
+*.sqlite
+*.sqlite3
+*.db
+*.log
+.DS_Store

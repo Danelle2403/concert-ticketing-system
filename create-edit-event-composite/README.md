@@ -7,7 +7,7 @@ Manager-only Flask orchestration service for creating, editing, and cancelling e
 - validates the acting user through User Service
 - creates or edits event metadata through Event Service
 - cancels events through Event Service and triggers refund-composite for event-wide Stripe refunds
-- relies on `managerId` stored in Event Service for ownership checks and manager event listing
+- resolves the acting manager from the bearer token and uses `managerId` stored in Event Service for ownership checks
 - bootstraps Seat Inventory with the Event Service integer event ID by aggregating `seatSections[].capacity` per pricing tier
 - validates existing Seat Inventory totals before allowing seat-configuration edits
 - publishes `event.updated` and `event.cancelled` messages to RabbitMQ for the notification wrapper
@@ -29,7 +29,7 @@ What is still missing is an admin update/delete API in Seat Inventory. Because o
 - `POST /manager/events`
 - `PUT /manager/events/:eventId`
 - `POST /manager/events/:eventId/cancel`
-- `GET /manager/events?managerId=:managerId`
+- `GET /manager/events`
 
 Compatibility aliases:
 
@@ -52,9 +52,13 @@ Environment variables used by this service:
 The browser should reach this service through Kong at `http://localhost:8000/events` or `http://localhost:8000/manager/events`.
 The direct container port `http://localhost:5012` is for internal calls, health checks, and debugging.
 
+All browser-facing manager routes require `Authorization: Bearer <jwt>`.
+
 ## Seed dummy data
 
-This seed path assumes:
+This seed path assumes the stack is already running and the shared demo state has been reset.
+
+This helper assumes:
 
 - User Service is on `localhost:5001`
 - Event Service is on `localhost:5003`
@@ -62,6 +66,7 @@ This seed path assumes:
 - Create/Edit Event Composite is on `localhost:5012`
 
 ```bash
+python3 ../scripts/reset_local_demo_state.py
 cd create-edit-event-composite
 python3 seed_dummy_data.py
 ```

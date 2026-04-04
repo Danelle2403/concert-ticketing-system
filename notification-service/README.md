@@ -44,6 +44,8 @@ SendGrid-backed notification wrapper that consumes RabbitMQ fanout events and em
 This service is an internal dependency behind the composites and RabbitMQ consumer.
 The repo root stack exposes it on `http://localhost:5013` for health checks and debugging.
 
+User lookups performed by this service use the shared `X-Internal-Service-Token` on User Service helper routes.
+
 ## Local tests
 
 ```bash

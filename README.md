@@ -26,7 +26,7 @@ Make sure you have the following installed before running:
 - [Git](https://git-scm.com/)
 
 ## Local Environment Setup
-Create a local `.env` file before starting the stack if you want real notification delivery and a configured Stripe wrapper:
+Create a local `.env` file before starting the stack if you want real notification delivery, a configured Stripe wrapper, or explicit auth secrets:
 
 ```bash
 cp .env.example .env
@@ -39,6 +39,11 @@ Required for SendGrid-backed notifications:
 Required for the live purchase/refund flow:
 - `STRIPE_SECRET_KEY`: your Stripe secret key
 - `STRIPE_PUBLISHABLE_KEY`: your Stripe publishable key
+
+Optional but recommended for auth:
+- `AUTH_TOKEN_SECRET`: HS256 signing secret shared by `user-service` and Kong JWT verification
+- `AUTH_TOKEN_ISSUER`: JWT issuer claim expected by Kong and `user-service`
+- `INTERNAL_SERVICE_TOKEN`: shared secret for internal-only service endpoints
 
 If these are left blank, the notification wrapper still runs, but it switches to `log_only` mode and writes the notification payload to container logs instead of sending email.
 If the Stripe keys are left blank, the payment wrapper still starts, but it returns `503 STRIPE_NOT_CONFIGURED` for live payment/refund requests.
@@ -68,17 +73,18 @@ colima nerdctl -- compose up -d --build
 ```
 
 ### 3. Access the application
-Use the API gateway for all browser and manual app flows. The UI is already wired to it.
+Use Kong for the public API surface. Direct service ports still exist for debugging, health checks, and internal scripts.
 
 | Gateway entrypoint | URL |
 |---|---|
 | UI | http://localhost:8080/index.html |
 | Kong API Gateway (used by UI) | http://localhost:8000 |
+| Auth endpoints | http://localhost:8000/auth |
 | Browse events | http://localhost:8000/events |
-| User endpoints | http://localhost:8000/user |
+| User ticket endpoints | http://localhost:8000/user |
 | Purchase endpoints | http://localhost:8000/purchase |
 | Refund endpoints | http://localhost:8000/refunds |
-| Manager event orchestration | http://localhost:8000/events |
+| Manager event endpoints | http://localhost:8000/manager/events |
 | RabbitMQ Dashboard | http://localhost:15672 |
 
 Direct service ports still exist for internal service-to-service traffic, health checks, and debugging:
@@ -101,15 +107,16 @@ python3 scripts/reset_local_demo_state.py
 ```
 
 Default demo users:
-- Fan login `User ID = 1`
-- Fan login `User ID = 2`
-- Manager login `User ID = 99`
+- `fan@example.com / Concert123!`
+- `fan2@example.com / Concert123!`
+- `manager@example.com / Concert123!`
 
 The reset script rebuilds local service state from the shared fixture at `demo/local_demo_state.json`, creates fresh OrderService rows, and then repoints Purchase Composite to those new order ids.
 
-If you only want the smaller order-aligned seed without wiping everything, the legacy internal endpoints still exist:
+If you only want the smaller order-aligned seed without wiping everything, the internal endpoints still exist and require the shared service token:
 ```bash
-curl -X POST http://localhost:5001/user/seed
+curl -X POST http://localhost:5001/user/seed \
+  -H "X-Internal-Service-Token: concert-hub-internal-dev-token"
 curl -X POST http://localhost:5004/inventory/admin/seed-order-demo
 ```
 
@@ -182,25 +189,37 @@ Use these routes from the UI or from external clients. They are the supported pu
 
 | Route prefix | Routed to | Purpose |
 |---|---|---|
-| `/user`, `/users` | User Service | login, registration, fan ticket lookups |
+| `/auth` | User Service | register, login, and current-session lookup |
 | `/events` `GET` | Event Service | browse and view event details |
 | `/events` `POST` / `PUT` | Create/Edit Event Composite | create, edit, and cancel manager flows |
 | `/manager/events` | Create/Edit Event Composite | manager-native route aliases |
+| `/user/events`, `/user/managing` | User Service | authenticated fan and manager account views |
 | `/purchase` | Purchase Composite | checkout session creation and confirmation |
 | `/refunds` | Refund Composite | ticket refund flows |
 
 The gateway intentionally does not expose Ticket Atomic, Notification Service, or Payment Service as public browser routes. Those remain internal dependencies behind the composites.
 
+## Authentication Model
+
+- `POST /auth/register` and `POST /auth/login` are public routes.
+- `GET /auth/me` expects `Authorization: Bearer <jwt>`.
+- Kong rejects missing or invalid JWTs on protected route groups before the request reaches the service.
+- Services still enforce role and ownership checks after JWT validation.
+- Internal helper endpoints require `X-Internal-Service-Token`.
+
 ## Internal Service Endpoints — User Service
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | /health | Health check |
-| GET | /users | Get all users |
+| POST | /auth/register | Register a new user with email/password |
+| POST | /auth/login | Authenticate and receive a JWT |
+| GET | /auth/me | Resolve the current bearer token |
+| GET | /users | Internal user listing |
 | GET | /user/<userId> | Get user by ID |
-| POST | /user/new | Register new user |
-| GET | /user/events | Get fan's purchased tickets |
-| GET | /user/managing | Get manager's events |
-| POST | /user/seed | Seed demo users + manager events |
+| POST | /user/new | Legacy internal user creation alias |
+| GET | /user/events | Get fan's purchased tickets for the authenticated user |
+| GET | /user/managing | Get manager's events for the authenticated user |
+| POST | /user/seed | Internal demo seed reset |
 | POST | /user/tickets/add | Internal ticket upsert used by composites |
 | GET | /user/ticket/<ticketId> | Internal ticket lookup |
 | POST | /user/ticket/<ticketId>/status | Internal ticket status update |
@@ -225,10 +244,10 @@ The gateway intentionally does not expose Ticket Atomic, Notification Service, o
 |---|---|---|
 | GET | /health | Health check |
 | GET | /purchase/config | Stripe publishable key + seat hold TTL for UI |
-| POST | /purchase/checkout/session | Create Stripe-backed checkout session and seat hold |
-| POST | /purchase/checkout/confirm | Verify payment, confirm seats, issue tickets, create order |
-| POST | /purchase/checkout | Legacy checkout alias |
-| GET | /purchase/<purchaseId>/status | Get purchase status |
+| POST | /purchase/checkout/session | Authenticated checkout session creation and seat hold |
+| POST | /purchase/checkout/confirm | Authenticated payment verification, ticket issue, and order creation |
+| POST | /purchase/checkout | Legacy authenticated checkout alias |
+| GET | /purchase/<purchaseId>/status | Authenticated purchase status |
 | GET | /purchase/ticket/<ticketId> | Internal ticket mapping lookup |
 | POST | /purchase/ticket/<ticketId>/status | Internal ticket mapping status update |
 
@@ -236,8 +255,8 @@ The gateway intentionally does not expose Ticket Atomic, Notification Service, o
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | /health | Health check |
-| POST | /refunds/<ticketId> | Refund one ticket through Stripe and update local state |
-| POST | /refunds/event/<eventId> | Refund all active tickets for an event |
+| POST | /refunds/<ticketId> | Authenticated single-ticket refund through Stripe and local state updates |
+| POST | /refunds/event/<eventId> | Manager/internal event-wide refund batch |
 
 ## API Endpoints — Ticket Atomic Service
 | Method | Endpoint | Description |
@@ -252,10 +271,10 @@ The gateway intentionally does not expose Ticket Atomic, Notification Service, o
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | /health | Health check |
-| GET | /manager/events?managerId=<managerId> | Manager-owned event listing with access validation |
-| POST | /manager/events | Scenario 2 create orchestration |
-| PUT | /manager/events/<eventId> | Scenario 2 edit orchestration |
-| POST | /manager/events/<eventId>/cancel | Scenario 3 manager cancellation orchestration |
+| GET | /manager/events | Manager-owned event listing from the bearer token |
+| POST | /manager/events | Authenticated manager create orchestration |
+| PUT | /manager/events/<eventId> | Authenticated manager edit orchestration |
+| POST | /manager/events/<eventId>/cancel | Authenticated manager cancellation orchestration |
 | POST | /events/create | Compatibility alias |
 | PUT | /events/<eventId>/edit | Compatibility alias |
 | POST | /events/<eventId>/cancel | Compatibility alias |
@@ -295,7 +314,7 @@ The gateway intentionally does not expose Ticket Atomic, Notification Service, o
 - The API Gateway runs on port 8000
 - Each service has its own database
 - Purchase checkout writes orders to the external OutSystems OrderService and issues tickets through the local `ticket-atomic` service
-- The purchase wrapper still generates or accepts `paymentChargeId` values directly; the Stripe wrapper is available but is not yet wired into purchase or cancel flows
+- Purchase and refund flows are wired through the Stripe wrapper
 - RabbitMQ is used for async `event.updated` and `event.cancelled` fanout from the create/edit composite to the notification wrapper
 - Event edit notifications include refund-request guidance, and cancel notifications include Stripe refund guidance for ticket holders that are not currently `cancelled` or `refunded`
-- Local order-aligned demo data still depends on prefixed external OrderService IDs like `fan-001` and `con-001`
+- Local auth uses JWT bearer tokens with service-side ownership checks behind Kong validation
