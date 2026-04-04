@@ -1153,14 +1153,14 @@ a:hover { color: var(--text-primary); }
     gap: 8px;
 }
 
-.form-group label {
+.form-group > label {
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--text-secondary);
     letter-spacing: 0.3px;
 }
 
-.form-group input,
+.form-group > input,
 .form-group select,
 .form-group textarea {
     padding: 12px 16px;
@@ -1176,18 +1176,18 @@ a:hover { color: var(--text-primary); }
     cursor: text;
 }
 
-.form-group input:focus,
+.form-group > input:focus,
 .form-group select:focus,
 .form-group textarea:focus { border-color: var(--border-hover); }
 
-.form-group.has-error input,
+.form-group.has-error > input,
 .form-group.has-error select,
 .form-group.has-error textarea {
     border-color: rgba(248, 113, 113, 0.85);
     box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.12);
 }
 
-.form-group input::placeholder { color: var(--text-muted); }
+.form-group > input::placeholder { color: var(--text-muted); }
 .form-group select option { background: var(--bg-secondary); }
 .form-group select { cursor: none; }
 .form-group textarea {
@@ -1246,6 +1246,94 @@ a:hover { color: var(--text-primary); }
     font-size: 0.9rem;
     color: var(--text-secondary);
     margin-top: 6px;
+}
+
+.checkout-shell {
+    max-width: 1040px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.checkout-shell .event-summary-card {
+    margin-bottom: 0;
+}
+
+.checkout-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.checkout-panel .form-group {
+    margin-bottom: 0;
+}
+
+.checkout-panel-head {
+    margin-bottom: 2px;
+}
+
+.checkout-panel-head .summary-pill {
+    flex-shrink: 0;
+}
+
+.checkout-subtitle {
+    margin-bottom: 0;
+    max-width: 62ch;
+    color: var(--text-secondary);
+    line-height: 1.7;
+}
+
+.checkout-details-panel .total-price {
+    margin-top: 4px;
+}
+
+.checkout-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 6px;
+}
+
+.payment-panel {
+    gap: 18px;
+}
+
+.payment-note {
+    margin: 0;
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(212, 112, 154, 0.28);
+    background: rgba(212, 112, 154, 0.08);
+    color: var(--blush);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.payment-status-row {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.payment-hold-note {
+    margin: 0;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--blush);
+}
+
+.payment-element-shell {
+    padding: 18px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
+        rgba(18, 0, 36, 0.42);
+}
+
+#payment-element {
+    min-height: 260px;
 }
 
 /* ── TABS ────────────────────────────────────────────────── */
@@ -1682,6 +1770,122 @@ a:hover { color: var(--text-primary); }
     margin: 4px 0;
 }
 
+.account-type-radio-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 2px;
+}
+
+.account-type-radio-card {
+    position: relative;
+    display: block;
+    cursor: none;
+    min-width: 0;
+}
+
+.account-type-radio-card input[type="radio"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+    appearance: none;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.account-type-radio-ui {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 128px;
+    padding: 18px 18px 16px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+        rgba(255, 255, 255, 0.02);
+    color: var(--text-secondary);
+    transition: var(--transition);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.account-type-radio-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.account-type-indicator {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    border-radius: 999px;
+    border: 1.5px solid rgba(255, 255, 255, 0.24);
+    background: rgba(255, 255, 255, 0.03);
+    transition: var(--transition);
+}
+
+.account-type-radio-card:hover .account-type-radio-ui {
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+
+.account-type-radio-card input:checked + .account-type-radio-ui {
+    border-color: rgba(212, 112, 154, 0.56);
+    background:
+        linear-gradient(180deg, rgba(212, 112, 154, 0.22), rgba(212, 112, 154, 0.08)),
+        rgba(255, 255, 255, 0.03);
+    box-shadow:
+        0 14px 32px rgba(14, 0, 26, 0.32),
+        0 0 0 1px rgba(212, 112, 154, 0.16);
+    color: var(--text-primary);
+}
+
+.account-type-radio-card input:checked + .account-type-radio-ui .account-type-indicator {
+    border-color: rgba(212, 112, 154, 0.75);
+    background:
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.94) 0 38%, transparent 40%),
+        linear-gradient(135deg, var(--accent), var(--pink));
+}
+
+.account-type-radio-card input:focus-visible + .account-type-radio-ui {
+    outline: 2px solid rgba(212, 112, 154, 0.7);
+    outline-offset: 3px;
+}
+
+.account-type-title {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: inherit;
+}
+
+.account-type-copy {
+    font-size: 0.84rem;
+    line-height: 1.65;
+    color: inherit;
+    max-width: 24ch;
+}
+
+.form-group.has-error .account-type-radio-ui {
+    border-color: rgba(248, 113, 113, 0.72);
+}
+
+.form-group.has-error .account-type-radio-group {
+    padding: 2px;
+    border-radius: 20px;
+    box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.08);
+}
+
 .auth-switch {
     font-size: 0.875rem;
     color: var(--text-muted);
@@ -1866,6 +2070,13 @@ a:hover { color: var(--text-primary); }
     align-items: stretch;
 }
 
+.manager-status-pill {
+    justify-content: center;
+    min-height: 48px;
+    width: 100%;
+    text-align: center;
+}
+
 .event-card-topline {
     display: flex;
     align-items: center;
@@ -1875,8 +2086,9 @@ a:hover { color: var(--text-primary); }
 }
 
 .event-aux {
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-size: 0.82rem;
+    line-height: 1.6;
 }
 
 .manager-access-card {
@@ -1978,6 +2190,10 @@ a:hover { color: var(--text-primary); }
     .auth-left,
     .auth-right {
         padding: 56px 32px;
+    }
+
+    .account-type-radio-group {
+        grid-template-columns: 1fr;
     }
 
     .manager-grid {
@@ -2146,6 +2362,11 @@ a:hover { color: var(--text-primary); }
         max-width: none;
     }
 
+    .account-type-radio-ui {
+        min-height: auto;
+        padding: 16px;
+    }
+
     .manager-header,
     .panel-head,
     .section-card-head,
@@ -2163,6 +2384,18 @@ a:hover { color: var(--text-primary); }
 
     .container {
         padding: 0 20px;
+    }
+
+    .checkout-shell {
+        gap: 22px;
+    }
+
+    .checkout-panel-head .summary-pill {
+        align-self: flex-start;
+    }
+
+    .payment-element-shell {
+        padding: 14px;
     }
 
     .modal-content-wide {

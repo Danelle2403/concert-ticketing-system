@@ -2,14 +2,26 @@ from copy import deepcopy
 from pathlib import Path
 import sys
 
+import jwt
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app as user_app
 
+INTERNAL_HEADERS = {"X-Internal-Service-Token": user_app.INTERNAL_SERVICE_TOKEN}
+
 DEMO_STATE = user_app.load_demo_seed_data()
-DEMO_USERS = deepcopy(DEMO_STATE["users"])
+DEMO_USERS = [
+    {
+        "id": row["id"],
+        "name": row["name"],
+        "email": row["email"],
+        "password_hash": user_app.generate_password_hash(row["password"]),
+        "role": row["role"],
+    }
+    for row in DEMO_STATE["users"]
+]
 DEMO_MANAGED_EVENTS = deepcopy(DEMO_STATE["managedEvents"])
 DEMO_USER_TICKETS = deepcopy(DEMO_STATE["userTickets"])
 
@@ -38,6 +50,14 @@ class FakeUserCursor:
         self.rowcount = 0
         state = self.db.state
 
+        if sql.startswith("SELECT column_name FROM information_schema.columns"):
+            self.results = [{"column_name": "password_hash"}]
+            return
+
+        if sql.startswith("ALTER TABLE users ADD COLUMN password_hash"):
+            self.rowcount = 0
+            return
+
         if sql == "SELECT * FROM users":
             self.results = [deepcopy(row) for row in state["users"]]
             return
@@ -52,12 +72,13 @@ class FakeUserCursor:
             self.results = [deepcopy(row) for row in state["users"] if row["email"] == email]
             return
 
-        if sql.startswith("INSERT INTO users (name, email, role) VALUES"):
+        if sql.startswith("INSERT INTO users (name, email, password_hash, role) VALUES"):
             user = {
                 "id": state["next_user_id"],
                 "name": params[0],
                 "email": params[1],
-                "role": params[2],
+                "password_hash": params[2],
+                "role": params[3],
             }
             state["next_user_id"] += 1
             state["users"].append(user)
@@ -112,8 +133,14 @@ class FakeUserCursor:
             self.rowcount = before - len(state["users"])
             return
 
-        if sql.startswith("INSERT INTO users (id, name, email, role) VALUES"):
-            user = {"id": int(params[0]), "name": params[1], "email": params[2], "role": params[3]}
+        if sql.startswith("INSERT INTO users (id, name, email, password_hash, role) VALUES"):
+            user = {
+                "id": int(params[0]),
+                "name": params[1],
+                "email": params[2],
+                "password_hash": params[3],
+                "role": params[4],
+            }
             state["users"] = [row for row in state["users"] if row["id"] != user["id"]]
             state["users"].append(user)
             state["users"].sort(key=lambda row: row["id"])
@@ -311,6 +338,10 @@ class FakeUserDB:
 @pytest.fixture
 def client(monkeypatch):
     db = FakeUserDB()
+    monkeypatch.setattr(user_app, "_user_auth_schema_checked", False)
+    monkeypatch.setenv("AUTH_TOKEN_SECRET", "test-auth-secret-at-least-32-bytes")
+    monkeypatch.setattr(user_app, "AUTH_TOKEN_SECRET", "test-auth-secret-at-least-32-bytes")
+    monkeypatch.setattr(user_app, "AUTH_TOKEN_ISSUER", "test-concert-hub-ui")
     monkeypatch.setattr(user_app, "get_db", lambda: db)
     return user_app.app.test_client(), db
 
@@ -320,9 +351,15 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
 
     db.state["user_tickets"] = []
     db.state["managed_events"] = []
-    db.state["users"] = [{"id": 555, "name": "Temp", "email": "temp@example.com", "role": "fan"}]
+    db.state["users"] = [{
+        "id": 555,
+        "name": "Temp",
+        "email": "temp@example.com",
+        "password_hash": user_app.generate_password_hash("Temporary123!"),
+        "role": "fan",
+    }]
 
-    response = test_client.post("/user/seed")
+    response = test_client.post("/user/seed", headers=INTERNAL_HEADERS)
 
     assert response.status_code == 200
     assert response.get_json() == {
@@ -332,7 +369,10 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
         "ticketCount": len(DEMO_USER_TICKETS),
     }
 
-    active_event_tickets = test_client.get("/user/tickets/by-event/con-001?status=active")
+    active_event_tickets = test_client.get(
+        "/user/tickets/by-event/con-001?status=active",
+        headers=INTERNAL_HEADERS,
+    )
     assert active_event_tickets.status_code == 200
     assert active_event_tickets.get_json()["tickets"] == [
         {
@@ -347,7 +387,7 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
         }
     ]
 
-    managed = test_client.get("/user/managing?userId=99")
+    managed = test_client.get("/user/managing?userId=99", headers=INTERNAL_HEADERS)
     assert managed.status_code == 200
     assert {row["eventId"] for row in managed.get_json()["events"]} == {
         "1001",
@@ -357,7 +397,7 @@ def test_seed_defaults_restores_order_aligned_demo_rows(client):
         "789",
     }
 
-    manager = test_client.get("/user/99")
+    manager = test_client.get("/user/99", headers=INTERNAL_HEADERS)
     assert manager.status_code == 200
     assert manager.get_json()["role"] == "manager"
 
@@ -376,6 +416,7 @@ def test_ticket_upsert_and_managed_event_cancel_normalize_prefixed_ids(client):
             "date": "2026-04-18",
             "status": "active",
         },
+        headers=INTERNAL_HEADERS,
     )
 
     assert response.status_code == 201
@@ -383,11 +424,97 @@ def test_ticket_upsert_and_managed_event_cancel_normalize_prefixed_ids(client):
     assert response.get_json()["ticketId"] == "900"
     assert response.get_json()["eventId"] == "1"
 
-    lookup = test_client.get("/user/ticket/tkt-900")
+    lookup = test_client.get("/user/ticket/tkt-900", headers=INTERNAL_HEADERS)
     assert lookup.status_code == 200
     assert lookup.get_json()["ticketId"] == "900"
 
-    cancel = test_client.post("/user/managed/con-001/cancel")
+    cancel = test_client.post("/user/managed/con-001/cancel", headers=INTERNAL_HEADERS)
     assert cancel.status_code == 200
     assert cancel.get_json()["eventId"] == "1"
     assert cancel.get_json()["status"] == "cancelled"
+
+
+def test_auth_register_and_login_use_email_password(client):
+    test_client, db = client
+
+    register = test_client.post(
+        "/auth/register",
+        json={
+            "name": "New Fan",
+            "email": "newfan@example.com",
+            "password": "Password123!",
+            "role": "fan",
+        },
+    )
+
+    assert register.status_code == 201
+    register_payload = register.get_json()
+    assert register_payload["email"] == "newfan@example.com"
+    assert register_payload["authToken"]
+    assert "password_hash" not in register_payload
+
+    created_user = next(row for row in db.state["users"] if row["email"] == "newfan@example.com")
+    assert user_app.check_password_hash(created_user["password_hash"], "Password123!")
+
+    login = test_client.post(
+        "/auth/login",
+        json={"email": "newfan@example.com", "password": "Password123!"},
+    )
+
+    assert login.status_code == 200
+    login_payload = login.get_json()
+    assert login_payload["email"] == "newfan@example.com"
+    assert login_payload["userId"] == register_payload["userId"]
+    assert login_payload["authToken"]
+    claims = jwt.decode(
+        login_payload["authToken"],
+        user_app.AUTH_TOKEN_SECRET,
+        algorithms=[user_app.AUTH_TOKEN_ALGORITHM],
+        issuer=user_app.AUTH_TOKEN_ISSUER,
+    )
+    assert claims["iss"] == user_app.AUTH_TOKEN_ISSUER
+    assert claims["role"] == "fan"
+    assert claims["userId"] == register_payload["userId"]
+
+    session = test_client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {login_payload['authToken']}"},
+    )
+
+    assert session.status_code == 200
+    assert session.get_json()["userId"] == register_payload["userId"]
+
+
+def test_auth_login_rejects_invalid_password(client):
+    test_client, _db = client
+
+    response = test_client.post(
+        "/auth/login",
+        json={"email": "fan@example.com", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.get_json()["error"] == "Invalid email or password"
+
+
+def test_auth_me_rejects_missing_or_invalid_token(client):
+    test_client, _db = client
+
+    missing = test_client.get("/auth/me")
+    invalid = test_client.get(
+        "/auth/me",
+        headers={"Authorization": "Bearer invalid-token"},
+    )
+
+    assert missing.status_code == 401
+    assert invalid.status_code == 401
+
+
+def test_internal_user_routes_require_internal_service_token(client):
+    test_client, _db = client
+
+    users_response = test_client.get("/users")
+    seed_response = test_client.post("/user/seed")
+
+    assert users_response.status_code == 403
+    assert seed_response.status_code == 403

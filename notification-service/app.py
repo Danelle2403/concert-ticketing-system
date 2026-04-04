@@ -12,6 +12,12 @@ import pika
 import requests
 
 
+INTERNAL_SERVICE_TOKEN = os.environ.get(
+    "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
+)
+INTERNAL_SERVICE_PREFIXES = ("http://user-service:",)
+
+
 def utc_now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -24,7 +30,10 @@ def env_flag(name, default=False):
 
 
 def request_json(method, url, payload=None, timeout=8):
-    response = requests.request(method, url, json=payload, timeout=timeout)
+    headers = None
+    if any(str(url).startswith(prefix) for prefix in INTERNAL_SERVICE_PREFIXES):
+        headers = {"X-Internal-Service-Token": INTERNAL_SERVICE_TOKEN}
+    response = requests.request(method, url, json=payload, timeout=timeout, headers=headers)
     try:
         body = response.json()
     except Exception:
@@ -96,9 +105,10 @@ def get_notification_type(payload):
 
 
 def get_event_snapshot(payload):
+    event_payload = payload.get("event") or {}
     event_after = payload.get("eventAfter") or {}
     event_before = payload.get("eventBefore") or {}
-    return event_after or event_before
+    return event_after or event_before or event_payload
 
 
 def build_default_refund_info(notification_type):
@@ -192,19 +202,19 @@ def build_plain_text_body(payload, recipient_name):
         event_snapshot = payload.get("event") or {}
         support_email = payload.get("supportEmail") or "support@concerthub.local"
         source = str(payload.get("source") or "customer_request")
-        manager_line = ""
-        if source == "event_change_request":
-            manager = payload.get("manager") or {}
-            manager_line = (
-                f"Event manager alerted: {manager.get('name')} <{manager.get('email')}>\n"
-                if manager.get("email")
-                else ""
-            )
-        guidance = (
-            "Please contact customer support to complete the refund manually."
-            if source == "event_cancelled"
-            else "We have alerted the event manager and support team to follow up."
+        manager = payload.get("manager") or {}
+        manager_line = (
+            f"Event manager: {manager.get('name') or 'Manager'} <{manager.get('email')}>\n"
+            if manager.get("email")
+            else ""
         )
+        if source == "event_cancelled":
+            guidance = (
+                "We could not complete the automatic refund for this cancelled event. "
+                "The event manager and support team have been alerted and will follow up manually."
+            )
+        else:
+            guidance = "We have alerted the event manager and support team to follow up."
         return "\n".join(
             [
                 f"Hi {recipient_name or 'there'},",
@@ -336,13 +346,13 @@ def build_html_body(payload, recipient_name):
         source = str(payload.get("source") or "customer_request")
         manager = payload.get("manager") or {}
         manager_html = ""
-        if source == "event_change_request" and manager.get("email"):
+        if manager.get("email"):
             manager_html = (
-                f"<p><strong>Event manager alerted:</strong> {html.escape(str(manager.get('name') or 'Manager'))} "
+                f"<p><strong>Event manager:</strong> {html.escape(str(manager.get('name') or 'Manager'))} "
                 f"&lt;{html.escape(str(manager.get('email')))}&gt;</p>"
             )
         guidance = (
-            "Please contact customer support to complete the refund manually."
+            "We could not complete the automatic refund for this cancelled event. The event manager and support team have been alerted and will follow up manually."
             if source == "event_cancelled"
             else "We have alerted the event manager and support team to follow up."
         )
@@ -724,7 +734,7 @@ def create_app(test_config=None):
         fan = payload.get("fan") or {}
         manager = payload.get("manager") or {}
         recipients = [fan]
-        if str(payload.get("source") or "") == "event_change_request":
+        if str(payload.get("source") or "") in {"event_change_request", "event_cancelled"}:
             recipients.append(manager)
         sent = send_direct_notification(recipients, payload)
         return jsonify({"status": "processed", "recipients": sent}), 200

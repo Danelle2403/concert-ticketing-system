@@ -1,11 +1,15 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import json
+import jwt
 import mysql.connector
 import os
 from pathlib import Path
 import re
+import secrets
 import time
+from datetime import datetime, timedelta, timezone
+from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 CORS(app)
@@ -13,7 +17,19 @@ CORS(app)
 DB_CONNECT_RETRIES = int(os.environ.get("DB_CONNECT_RETRIES", "15"))
 DB_CONNECT_RETRY_DELAY_SECONDS = float(os.environ.get("DB_CONNECT_RETRY_DELAY_SECONDS", "1"))
 DB_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5"))
+AUTH_TOKEN_MAX_AGE_SECONDS = int(os.environ.get("AUTH_TOKEN_MAX_AGE_SECONDS", "604800"))
+AUTH_TOKEN_ISSUER = os.environ.get("AUTH_TOKEN_ISSUER", "concert-hub-ui")
+AUTH_TOKEN_SECRET = (
+    os.environ.get("AUTH_TOKEN_SECRET")
+    or os.environ.get("FLASK_SECRET_KEY")
+    or "concert-hub-local-dev-secret-2026"
+)
+AUTH_TOKEN_ALGORITHM = "HS256"
+INTERNAL_SERVICE_TOKEN = os.environ.get(
+    "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
+)
 DEMO_STATE_PATH = Path(__file__).resolve().parents[1] / "demo" / "local_demo_state.json"
+_user_auth_schema_checked = False
 
 
 def load_demo_seed_data():
@@ -31,6 +47,151 @@ def demo_seed_filters(demo_state):
         "event_ids": sorted({str(row["eventId"]) for row in managed_events} | {str(row["eventId"]) for row in user_tickets}),
         "ticket_ids": sorted({str(row["ticketId"]) for row in user_tickets}),
     }
+
+
+def ensure_user_auth_schema(conn):
+    global _user_auth_schema_checked
+    if _user_auth_schema_checked:
+        return
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = %s
+          AND table_name = 'users'
+          AND column_name = 'password_hash'
+        """,
+        (os.environ.get("DB_NAME", "user_db"),),
+    )
+    if not cursor.fetchone():
+        cursor.execute(
+            """
+            ALTER TABLE users
+            ADD COLUMN password_hash VARCHAR(255) NULL AFTER email
+            """
+        )
+        conn.commit()
+    cursor.close()
+    _user_auth_schema_checked = True
+
+
+def build_public_user(user):
+    if not user:
+        return user
+
+    payload = dict(user)
+    payload.pop("password_hash", None)
+    payload["userId"] = payload.get("id")
+    return payload
+
+
+def normalize_email(value):
+    return str(value or "").strip().lower()
+
+
+def validate_password(value):
+    password = str(value or "")
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters long")
+    return password
+
+
+def issue_auth_token(user):
+    user_id = user.get("userId", user.get("id"))
+    issued_at = datetime.now(timezone.utc)
+    payload = {
+        "iss": AUTH_TOKEN_ISSUER,
+        "sub": str(int(user_id)),
+        "userId": int(user_id),
+        "email": normalize_email(user.get("email")),
+        "role": user.get("role"),
+        "iat": issued_at,
+        "exp": issued_at + timedelta(seconds=AUTH_TOKEN_MAX_AGE_SECONDS),
+    }
+    return jwt.encode(
+        payload,
+        AUTH_TOKEN_SECRET,
+        algorithm=AUTH_TOKEN_ALGORITHM,
+    )
+
+
+def build_auth_response(user):
+    payload = build_public_user(user)
+    payload["authToken"] = issue_auth_token(payload)
+    return payload
+
+
+def get_bearer_token():
+    header = str(request.headers.get("Authorization") or "").strip()
+    if not header.lower().startswith("bearer "):
+        return None
+    token = header.split(" ", 1)[1].strip()
+    return token or None
+
+
+def authenticate_request():
+    db = None
+    try:
+        token = get_bearer_token()
+        if not token:
+            return None
+
+        claims = jwt.decode(
+            token,
+            AUTH_TOKEN_SECRET,
+            algorithms=[AUTH_TOKEN_ALGORITHM],
+            issuer=AUTH_TOKEN_ISSUER,
+        )
+        user_id = parse_int(claims.get("userId"), "userId")
+
+        db = connect_db()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        cursor.close()
+        if not user:
+            return None
+
+        if normalize_email(user.get("email")) != normalize_email(claims.get("email")):
+            return None
+
+        return normalize_user(user)
+    except (jwt.InvalidTokenError, TypeError, ValueError):
+        return None
+    finally:
+        if db:
+            db.close()
+
+
+def has_internal_service_access():
+    provided = str(request.headers.get("X-Internal-Service-Token") or "")
+    if not provided:
+        return False
+    return secrets.compare_digest(provided, INTERNAL_SERVICE_TOKEN)
+
+
+def require_internal_service_access():
+    if has_internal_service_access():
+        return None
+    return jsonify({"error": "Forbidden"}), 403
+
+
+def require_authenticated_user():
+    user = authenticate_request()
+    if not user:
+        return None, (jsonify({"error": "Unauthorized"}), 401)
+    return user, None
+
+
+def require_authenticated_manager():
+    user, error_response = require_authenticated_user()
+    if error_response:
+        return None, error_response
+    if user.get("role") != "manager":
+        return None, (jsonify({"error": "Manager access required"}), 403)
+    return user, None
 
 
 # ── DATABASE CONNECTION ───────────────────────────────────────
@@ -54,6 +215,12 @@ def get_db():
     raise last_error
 
 
+def connect_db():
+    conn = get_db()
+    ensure_user_auth_schema(conn)
+    return conn
+
+
 def env_flag(name, default=False):
     raw_value = os.environ.get(name)
     if raw_value is None:
@@ -62,10 +229,7 @@ def env_flag(name, default=False):
 
 
 def normalize_user(user):
-    if not user:
-        return user
-    user["userId"] = user.get("id")
-    return user
+    return build_public_user(user)
 
 
 def normalize_prefixed_id(value, prefixes):
@@ -100,12 +264,30 @@ def parse_int(value, field_name):
         raise ValueError(f"{field_name} must be an integer")
 
 
+def authenticate_user(email, password):
+    db = None
+    try:
+        db = connect_db()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM users WHERE email = %s", (normalize_email(email),))
+        user = cursor.fetchone()
+        cursor.close()
+        if not user or not user.get("password_hash"):
+            return None
+        if not check_password_hash(user["password_hash"], password):
+            return None
+        return normalize_user(user)
+    finally:
+        if db:
+            db.close()
+
+
 # ── HEALTH CHECK ──────────────────────────────────────────────
 @app.route("/health", methods=["GET"])
 def health():
     db = None
     try:
-        db = get_db()
+        db = connect_db()
         return jsonify({"status": "User Service is running", "database": "ok"}), 200
     except Exception as error:
         return (
@@ -128,7 +310,10 @@ def health():
 def get_all_users():
     db = None
     try:
-        db = get_db()
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute("SELECT * FROM users")
         users = [normalize_user(u) for u in cursor.fetchall()]
@@ -147,9 +332,12 @@ def get_all_users():
 def get_user(userId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         user_id = parse_int(userId, "userId")
 
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
         user = cursor.fetchone()
@@ -169,20 +357,94 @@ def get_user(userId):
             db.close()
 
 
+@app.route("/auth/register", methods=["POST"])
+def register_user():
+    db = None
+    try:
+        data = request.get_json() or {}
+        name = str(data.get("name") or "").strip()
+        email = normalize_email(data.get("email"))
+        raw_password = str(data.get("password") or "")
+        role = data.get("role", "fan")
+
+        if not name or not email or not raw_password:
+            return jsonify({"error": "Name, email, and password are required"}), 400
+        password = validate_password(raw_password)
+        if role not in {"fan", "manager"}:
+            return jsonify({"error": "Role must be fan or manager"}), 400
+
+        db = connect_db()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        existing = cursor.fetchone()
+        if existing:
+            return jsonify({"error": "Email already registered"}), 409
+
+        cursor.execute(
+            "INSERT INTO users (name, email, password_hash, role) VALUES (%s, %s, %s, %s)",
+            (name, email, generate_password_hash(password), role),
+        )
+        db.commit()
+        new_id = cursor.lastrowid
+        cursor.execute("SELECT * FROM users WHERE id = %s", (new_id,))
+        user = cursor.fetchone()
+        cursor.close()
+        return jsonify(build_auth_response(user)), 201
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    except Exception as error:
+        return jsonify({"error": str(error)}), 500
+    finally:
+        if db:
+            db.close()
+
+
+@app.route("/auth/login", methods=["POST"])
+def login_user():
+    try:
+        data = request.get_json() or {}
+        email = normalize_email(data.get("email"))
+        password = str(data.get("password") or "")
+        if not email or not password:
+            return jsonify({"error": "Email and password are required"}), 400
+
+        user = authenticate_user(email, password)
+        if not user:
+            return jsonify({"error": "Invalid email or password"}), 401
+        return jsonify(build_auth_response(user)), 200
+    except Exception as error:
+        return jsonify({"error": str(error)}), 500
+
+
+@app.route("/auth/me", methods=["GET"])
+def auth_me():
+    try:
+        user = authenticate_request()
+        if not user:
+            return jsonify({"error": "Unauthorized"}), 401
+        return jsonify(user), 200
+    except Exception as error:
+        return jsonify({"error": str(error)}), 500
+
+
 # ── CREATE NEW USER ───────────────────────────────────────────
 @app.route("/user/new", methods=["POST"])
 def create_user():
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         data = request.get_json() or {}
-        name = data.get("name")
-        email = data.get("email")
+        name = str(data.get("name") or "").strip()
+        email = normalize_email(data.get("email"))
         role = data.get("role", "fan")
+        password = str(data.get("password") or "")
 
         if not name or not email:
             return jsonify({"error": "Name and email are required"}), 400
 
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
 
         cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
@@ -190,9 +452,12 @@ def create_user():
         if existing:
             return jsonify({"error": "Email already registered"}), 409
 
+        password_hash = generate_password_hash(password) if password else generate_password_hash(
+            secrets.token_urlsafe(24)
+        )
         cursor.execute(
-            "INSERT INTO users (name, email, role) VALUES (%s, %s, %s)",
-            (name, email, role),
+            "INSERT INTO users (name, email, password_hash, role) VALUES (%s, %s, %s, %s)",
+            (name, email, password_hash, role),
         )
         db.commit()
         new_id = cursor.lastrowid
@@ -220,7 +485,7 @@ def reset_demo_state(full_reset=False):
         managed_events = demo_state["managedEvents"]
         user_tickets = demo_state["userTickets"]
         filters = demo_seed_filters(demo_state)
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor()
         if full_reset:
             cursor.execute("DELETE FROM user_tickets")
@@ -259,8 +524,14 @@ def reset_demo_state(full_reset=False):
 
         for user in users:
             cursor.execute(
-                "INSERT INTO users (id, name, email, role) VALUES (%s, %s, %s, %s)",
-                (user["id"], user["name"], user["email"], user["role"]),
+                "INSERT INTO users (id, name, email, password_hash, role) VALUES (%s, %s, %s, %s, %s)",
+                (
+                    user["id"],
+                    user["name"],
+                    normalize_email(user["email"]),
+                    generate_password_hash(validate_password(user["password"])),
+                    user["role"],
+                ),
             )
         for event in managed_events:
             cursor.execute(
@@ -309,12 +580,18 @@ def reset_demo_state(full_reset=False):
 
 @app.route("/user/seed", methods=["POST"])
 def seed_defaults():
+    internal_error = require_internal_service_access()
+    if internal_error:
+        return internal_error
     payload, status = reset_demo_state(full_reset=False)
     return jsonify(payload), status
 
 
 @app.route("/user/admin/reset-demo", methods=["POST"])
 def reset_demo_defaults():
+    internal_error = require_internal_service_access()
+    if internal_error:
+        return internal_error
     payload, status = reset_demo_state(full_reset=True)
     return jsonify(payload), status
 
@@ -324,13 +601,23 @@ def reset_demo_defaults():
 def get_user_events():
     db = None
     try:
+        auth_user = None
+        if not has_internal_service_access():
+            auth_user, error_response = require_authenticated_user()
+            if error_response:
+                return error_response
+
         user_id_raw = request.args.get("userId")
-        if not user_id_raw:
+        if user_id_raw:
+            user_id = parse_int(user_id_raw, "userId")
+            if auth_user and user_id != int(auth_user["userId"]):
+                return jsonify({"error": "Forbidden"}), 403
+        elif auth_user:
+            user_id = int(auth_user["userId"])
+        else:
             return jsonify({"error": "userId is required"}), 400
 
-        user_id = parse_int(user_id_raw, "userId")
-
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute("SELECT * FROM user_tickets WHERE userId = %s", (user_id,))
         events = cursor.fetchall()
@@ -352,13 +639,23 @@ def get_user_events():
 def get_managing_events():
     db = None
     try:
+        auth_user = None
+        if not has_internal_service_access():
+            auth_user, error_response = require_authenticated_manager()
+            if error_response:
+                return error_response
+
         user_id_raw = request.args.get("userId")
-        if not user_id_raw:
+        if user_id_raw:
+            user_id = parse_int(user_id_raw, "userId")
+            if auth_user and user_id != int(auth_user["userId"]):
+                return jsonify({"error": "Forbidden"}), 403
+        elif auth_user:
+            user_id = int(auth_user["userId"])
+        else:
             return jsonify({"error": "userId is required"}), 400
 
-        user_id = parse_int(user_id_raw, "userId")
-
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute("SELECT * FROM managed_events WHERE managerId = %s", (user_id,))
         events = cursor.fetchall()
@@ -380,6 +677,9 @@ def get_managing_events():
 def add_user_ticket():
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         data = request.get_json() or {}
 
         user_id = parse_int(data.get("userId"), "userId")
@@ -393,7 +693,7 @@ def add_user_ticket():
         if not ticket_id or not event_id:
             return jsonify({"error": "ticketId and eventId are required"}), 400
 
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
 
         cursor.execute("SELECT id FROM user_tickets WHERE ticketId = %s", (ticket_id,))
@@ -438,8 +738,11 @@ def add_user_ticket():
 def get_ticket(ticketId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         ticketId = normalize_ticket_id(ticketId)
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute("SELECT * FROM user_tickets WHERE ticketId = %s", (ticketId,))
         ticket = cursor.fetchone()
@@ -462,13 +765,16 @@ def get_ticket(ticketId):
 def update_ticket_status(ticketId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         ticketId = normalize_ticket_id(ticketId)
         data = request.get_json() or {}
         status = data.get("status")
         if not status:
             return jsonify({"error": "status is required"}), 400
 
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
         cursor.execute(
             "UPDATE user_tickets SET status = %s WHERE ticketId = %s",
@@ -496,10 +802,13 @@ def update_ticket_status(ticketId):
 def get_tickets_by_event(eventId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         eventId = normalize_event_id(eventId)
         status = request.args.get("status")
 
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
         if status:
             cursor.execute(
@@ -525,10 +834,13 @@ def get_tickets_by_event(eventId):
 def update_managed_event(eventId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         eventId = normalize_event_id(eventId)
         data = request.get_json() or {}
 
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
 
         cursor.execute("SELECT * FROM managed_events WHERE eventId = %s", (eventId,))
@@ -570,8 +882,11 @@ def update_managed_event(eventId):
 def cancel_managed_event(eventId):
     db = None
     try:
+        internal_error = require_internal_service_access()
+        if internal_error:
+            return internal_error
         eventId = normalize_event_id(eventId)
-        db = get_db()
+        db = connect_db()
         cursor = db.cursor(dictionary=True)
 
         cursor.execute(

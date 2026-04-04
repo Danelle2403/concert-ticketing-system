@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=20260404-ui-refresh-4">
 </head>
 <body>
 
@@ -26,16 +26,22 @@
         </div>
     </nav>
 
-    <main class="container form-container">
-        <div id="event-summary" class="event-summary-card">
+    <main class="container form-container checkout-shell">
+        <div id="event-summary" class="event-summary-card checkout-summary-card">
             <h2 id="event-name">Loading event...</h2>
             <p id="event-venue"></p>
             <p id="event-date"></p>
             <p id="event-price"></p>
         </div>
 
-        <form id="purchase-form" class="form-panel">
-            <h2>Ticket Details</h2>
+        <form id="purchase-form" class="form-panel checkout-panel checkout-details-panel">
+            <div class="panel-head checkout-panel-head">
+                <div>
+                    <h2>Ticket Details</h2>
+                    <p class="form-subtitle checkout-subtitle">Review your buyer details, seat type, and ticket quantity before moving to payment.</p>
+                </div>
+                <span class="summary-pill">Secure Checkout</span>
+            </div>
 
             <div class="form-group">
                 <label for="buyer-name">Full Name</label>
@@ -60,7 +66,6 @@
             <div class="form-group">
                 <label>Total Price</label>
                 <p id="total-price" class="total-price">$0.00</p>
-                <p id="hold-timer" class="event-aux hidden"></p>
             </div>
 
             <div id="purchase-error" class="error-msg hidden"></div>
@@ -71,29 +76,42 @@
                 Reserving your seats...
             </div>
 
-            <button type="submit" class="btn-primary full-width" id="reserve-button">
-                Reserve Seats & Continue
-            </button>
-            <button type="button" class="btn-secondary full-width" onclick="window.location.href='index.html'">
-                Cancel
-            </button>
+            <div class="checkout-actions">
+                <button type="submit" class="btn-primary full-width" id="reserve-button">
+                    Reserve Seats & Continue
+                </button>
+                <button type="button" class="btn-secondary full-width" onclick="window.location.href='index.html'">
+                    Cancel
+                </button>
+            </div>
         </form>
 
-        <section id="payment-panel" class="form-panel hidden">
-            <h2>Secure Payment</h2>
-            <p class="event-aux">Your seats are reserved for 10 minutes while you complete payment.</p>
-            <div id="payment-element" style="padding: 14px 0;"></div>
+        <section id="payment-panel" class="form-panel checkout-panel payment-panel hidden">
+            <div class="panel-head checkout-panel-head">
+                <div>
+                    <h2>Complete Payment</h2>
+                    <p class="form-subtitle checkout-subtitle">Choose your payment method and confirm the booking while your reserved seats are still on hold.</p>
+                </div>
+                <span class="summary-pill" id="payment-hold-pill">10 Min Hold</span>
+            </div>
+            <div class="payment-status-row">
+                <p class="payment-note">Card and PayNow are payment methods below. The final action button completes the purchase.</p>
+                <p id="hold-timer" class="payment-hold-note hidden"></p>
+            </div>
+            <div class="payment-element-shell">
+                <div id="payment-element"></div>
+            </div>
             <div id="stripe-error" class="error-msg hidden"></div>
             <div id="stripe-loading" class="loading-msg hidden">Confirming payment...</div>
             <button type="button" class="btn-primary full-width" id="pay-button">
-                Pay Now
+                Complete Purchase
             </button>
         </section>
     </main>
 
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="js/api.js"></script>
-    <script src="js/form-validation.js"></script>
+    <script src="js/api.js?v=20260404-ui-refresh-4"></script>
+    <script src="js/form-validation.js?v=20260404-ui-refresh-4"></script>
     <script>
         const {
             bindLiveValidation,
@@ -196,6 +214,7 @@
 
         function startHoldCountdown(expiresAt) {
             const label = document.getElementById("hold-timer");
+            const pill = document.getElementById("payment-hold-pill");
             clearInterval(holdTimerHandle);
             label.classList.remove("hidden");
 
@@ -204,6 +223,7 @@
                 if (remainingMs <= 0) {
                     clearInterval(holdTimerHandle);
                     label.textContent = "Seat hold expired. Reserve again to continue.";
+                    pill.textContent = "Hold Expired";
                     return;
                 }
 
@@ -211,6 +231,7 @@
                 const minutes = Math.floor(totalSeconds / 60);
                 const seconds = totalSeconds % 60;
                 label.textContent = `Seat hold expires in ${minutes}:${String(seconds).padStart(2, "0")}`;
+                pill.textContent = `${minutes}:${String(seconds).padStart(2, "0")} Hold`;
             }
 
             refresh();
@@ -234,10 +255,82 @@
             elements = stripe.elements({
                 clientSecret,
                 appearance: {
-                    theme: "stripe",
+                    theme: "night",
                     variables: {
-                        colorPrimary: "#0f172a",
-                        borderRadius: "12px"
+                        colorPrimary: "#d4709a",
+                        colorBackground: "#2a0050",
+                        colorText: "#f8f0ff",
+                        colorTextSecondary: "#d9bee7",
+                        colorDanger: "#fca5a5",
+                        colorIcon: "#f8f0ff",
+                        fontFamily: "Space Grotesk, sans-serif",
+                        spacingUnit: "6px",
+                        borderRadius: "14px"
+                    },
+                    rules: {
+                        ".Block": {
+                            backgroundColor: "transparent",
+                            boxShadow: "none"
+                        },
+                        ".Tab": {
+                            backgroundColor: "#43205f",
+                            color: "#f8f0ff",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            boxShadow: "none"
+                        },
+                        ".Tab:hover": {
+                            backgroundColor: "#51296f",
+                            color: "#ffffff"
+                        },
+                        ".Tab--selected": {
+                            backgroundColor: "#5b2578",
+                            color: "#ffffff",
+                            borderColor: "rgba(212, 112, 154, 0.72)",
+                            boxShadow: "0 0 0 3px rgba(212, 112, 154, 0.18)"
+                        },
+                        ".TabLabel": {
+                            color: "#f8f0ff",
+                            fontWeight: "700"
+                        },
+                        ".Tab--selected .TabLabel": {
+                            color: "#ffffff"
+                        },
+                        ".TabIcon": {
+                            color: "#f8f0ff"
+                        },
+                        ".Tab:hover .TabIcon": {
+                            color: "#ffffff"
+                        },
+                        ".Tab--selected .TabIcon": {
+                            color: "#ffffff"
+                        },
+                        ".Label": {
+                            color: "#e8d8f2",
+                            fontWeight: "600"
+                        },
+                        ".Input": {
+                            backgroundColor: "#fffdfd",
+                            color: "#230040",
+                            border: "1px solid rgba(35, 0, 64, 0.12)",
+                            boxShadow: "none"
+                        },
+                        ".Input:focus": {
+                            borderColor: "#d4709a",
+                            boxShadow: "0 0 0 3px rgba(212, 112, 154, 0.16)"
+                        },
+                        ".Dropdown": {
+                            backgroundColor: "#fffdfd",
+                            color: "#230040",
+                            border: "1px solid rgba(35, 0, 64, 0.12)",
+                            boxShadow: "none"
+                        },
+                        ".DropdownItem": {
+                            color: "#230040"
+                        },
+                        ".CodeInput": {
+                            backgroundColor: "#fffdfd",
+                            color: "#230040"
+                        }
                     }
                 }
             });

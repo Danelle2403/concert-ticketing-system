@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=20260404-manager-fixes-3">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -38,17 +38,16 @@
         <div id="manager-view" class="hidden manager-dashboard">
             <section class="manager-header">
                 <div>
-                    <p class="manager-eyebrow">API Gateway Flow</p>
+                    <p class="manager-eyebrow">Manager Tools</p>
                     <h1>Event Manager Workspace</h1>
                     <p class="manager-summary">
-                        Browse data comes from the event service through Kong. Create and edit actions go
-                        through the create/edit composite aliases exposed by Kong.
+                        Create, review, update, and cancel your live events from one place.
                     </p>
                 </div>
                 <div class="manager-header-card">
-                    <span class="summary-pill">Gateway: Kong</span>
-                    <span class="summary-pill">Create: Composite</span>
-                    <span class="summary-pill">Edit: Composite</span>
+                    <span class="summary-pill">Create Events</span>
+                    <span class="summary-pill">Edit Details</span>
+                    <span class="summary-pill">Manage Sales</span>
                 </div>
             </section>
 
@@ -57,7 +56,7 @@
                     <div class="panel-head">
                         <div>
                             <h2>Create Event</h2>
-                            <p class="form-subtitle">Use this form to publish a full event with pricing tiers and seat inventory bootstrap data.</p>
+                            <p class="form-subtitle">Use this form to publish a complete event with pricing tiers and seating details.</p>
                         </div>
                         <button type="button" class="btn-secondary" onclick="resetCreateForm()">Reset</button>
                     </div>
@@ -66,7 +65,7 @@
                         <div class="form-grid">
                             <div class="form-group">
                                 <label for="create-title">Title</label>
-                                <input type="text" id="create-title" placeholder="Composite Demo: New Arena Show" required>
+                                <input type="text" id="create-title" placeholder="New Arena Show" required>
                             </div>
                             <div class="form-group">
                                 <label for="create-status">Status</label>
@@ -132,13 +131,13 @@
                                 <h3>Seat Sections</h3>
                                 <button type="button" class="btn-secondary" onclick="addSeatSectionRow()">Add Section</button>
                             </div>
-                            <p class="helper-text">Published events need positive capacities so the composite can bootstrap seat inventory.</p>
+                            <p class="helper-text">Published events need positive capacities so ticket availability can be prepared correctly.</p>
                             <div id="seat-section-rows" class="stack-list"></div>
                         </div>
 
                         <div id="create-event-success" class="success-msg hidden"></div>
                         <div id="create-event-error" class="error-msg hidden"></div>
-                        <div id="create-event-loading" class="loading-msg hidden">Creating event through Kong...</div>
+                        <div id="create-event-loading" class="loading-msg hidden">Creating event...</div>
 
                         <button type="submit" class="btn-primary full-width">Create Event</button>
                     </form>
@@ -148,15 +147,18 @@
                     <div class="panel-head manager-events-head">
                         <div>
                             <h2>My Events</h2>
-                            <p class="form-subtitle">Loaded from the event service through Kong. Edit actions are sent to the composite.</p>
+                            <p class="form-subtitle">View your current lineup and keep each event up to date.</p>
                         </div>
                         <button type="button" class="btn-secondary" onclick="loadManagedEvents()">Refresh</button>
                     </div>
 
+                    <div id="manager-events-success" class="success-msg hidden"></div>
+                    <div id="manager-events-error" class="error-msg hidden"></div>
+                    <div id="manager-events-action-loading" class="loading-msg hidden"></div>
                     <div id="loading" class="loading-msg">Loading your events...</div>
                     <div id="events-list" class="stack-list"></div>
                     <div id="no-events" class="empty-state hidden">No events found for this manager yet.</div>
-                    <div id="error-msg" class="error-msg hidden">Failed to load events from the gateway.</div>
+                    <div id="error-msg" class="error-msg hidden">Failed to load events.</div>
                 </div>
             </section>
         </div>
@@ -165,7 +167,7 @@
     <div id="edit-modal" class="modal hidden">
         <div class="modal-content modal-content-wide">
             <h3>Edit Event Details</h3>
-            <p class="helper-text">This editor updates title, description, venue, timing, and publish status. Seat configuration changes are intentionally excluded here because the current composite only supports metadata edits reliably after inventory bootstrap.</p>
+            <p class="helper-text">This editor updates title, description, venue, timing, and publish status. Seat configuration changes are managed separately after the event is created.</p>
 
             <div class="form-grid">
                 <div class="form-group">
@@ -218,7 +220,7 @@
 
             <div id="edit-success" class="success-msg hidden"></div>
             <div id="edit-error" class="error-msg hidden"></div>
-            <div id="edit-loading" class="loading-msg hidden">Saving changes through Kong...</div>
+            <div id="edit-loading" class="loading-msg hidden">Saving changes...</div>
 
             <div class="modal-buttons">
                 <button class="btn-primary" onclick="confirmEdit()">Save Changes</button>
@@ -227,8 +229,32 @@
         </div>
     </div>
 
-    <script src="js/api.js"></script>
-    <script src="js/form-validation.js"></script>
+    <div id="cancel-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Cancel Event</h3>
+            <p id="cancel-modal-subtitle" class="helper-text"></p>
+            <p class="warning-text">
+                Cancelling an event removes it from purchase and may trigger refunds for affected ticket holders.
+            </p>
+
+            <div class="form-group">
+                <label for="cancel-reason">Cancellation Reason</label>
+                <textarea id="cancel-reason" rows="4" placeholder="Explain why this event is being cancelled."></textarea>
+            </div>
+
+            <div id="cancel-success" class="success-msg hidden"></div>
+            <div id="cancel-error" class="error-msg hidden"></div>
+            <div id="cancel-loading" class="loading-msg hidden">Cancelling event...</div>
+
+            <div class="modal-buttons">
+                <button type="button" id="confirm-cancel-button" class="btn-danger" onclick="submitCancelEvent()">Confirm Cancellation</button>
+                <button type="button" class="btn-secondary" onclick="closeCancelModal()">Keep Event</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js?v=20260404-manager-fixes-3"></script>
+    <script src="js/form-validation.js?v=20260404-manager-fixes-3"></script>
     <script>
         const {
             bindLiveValidation,
@@ -244,6 +270,8 @@
         const managerId = managerUser?.userId || managerUser?.id;
         let managedEvents = [];
         let editingEventId = null;
+        let cancellingEventId = null;
+        let cancellingEventTitle = "";
 
         const defaultPricingTiers = [
             { code: "VIP", name: "VIP", price: 188, currency: "SGD" },
@@ -298,6 +326,34 @@
                     }
                 }
             });
+        }
+
+        function setManagerActionMessage(type, text = "") {
+            const success = document.getElementById("manager-events-success");
+            const error = document.getElementById("manager-events-error");
+            const loading = document.getElementById("manager-events-action-loading");
+
+            [success, error, loading].forEach((element) => {
+                element.classList.add("hidden");
+                element.textContent = "";
+            });
+
+            if (!type || !text) {
+                return;
+            }
+
+            const target = {
+                success,
+                error,
+                loading
+            }[type];
+
+            if (!target) {
+                return;
+            }
+
+            target.textContent = text;
+            target.classList.remove("hidden");
         }
 
         function createPricingTierRow(tier = {}) {
@@ -449,6 +505,31 @@
             };
         }
 
+        function formatCancellationResultMessage(eventTitle, refundFlow) {
+            const summary = refundFlow?.summary;
+            if (!summary || !Number.isFinite(summary.processed)) {
+                return `Cancelled "${eventTitle}". Fans will receive follow-up updates separately if any refunds are required.`;
+            }
+
+            const processed = Number(summary.processed) || 0;
+            const successful = Number(summary.successful) || 0;
+            const failed = Number(summary.failed) || 0;
+
+            if (processed === 0) {
+                return `Cancelled "${eventTitle}". No active customer refunds were required.`;
+            }
+
+            if (failed === 0) {
+                return `Cancelled "${eventTitle}". ${successful} automatic refund${successful === 1 ? "" : "s"} completed successfully.`;
+            }
+
+            if (successful === 0) {
+                return `Cancelled "${eventTitle}". ${failed} refund${failed === 1 ? "" : "s"} now require manual support follow-up.`;
+            }
+
+            return `Cancelled "${eventTitle}". ${successful} automatic refund${successful === 1 ? "" : "s"} completed, and ${failed} require manual support follow-up.`;
+        }
+
         function renderManagedEvents(events) {
             const list = document.getElementById("events-list");
             list.innerHTML = "";
@@ -456,8 +537,6 @@
             events.forEach((event) => {
                 const card = document.createElement("article");
                 card.className = "event-manage-card manager-event-card";
-                const eventIdArg = JSON.stringify(event.id);
-                const eventTitleArg = JSON.stringify(event.title);
                 card.innerHTML = `
                     <div class="event-info">
                         <div class="event-card-topline">
@@ -472,11 +551,25 @@
                         </p>
                     </div>
                     <div class="ticket-actions">
-                        <button class="btn-primary" onclick="openEditModal(${eventIdArg})">Edit Details</button>
-                        <button class="btn-danger" onclick="confirmCancelEvent(${eventIdArg}, ${eventTitleArg})">Cancel Event</button>
-                        <button class="btn-secondary" onclick="window.location.href='index.html'">Browse</button>
+                        <button type="button" class="btn-primary js-edit-event">Edit Details</button>
+                        ${event.statusKey === "cancelled"
+                            ? '<span class="summary-pill manager-status-pill">Already Cancelled</span>'
+                            : '<button type="button" class="btn-danger js-cancel-event">Cancel Event</button>'
+                        }
                     </div>
                 `;
+
+                card.querySelector(".js-edit-event").addEventListener("click", () => {
+                    openEditModal(event.id);
+                });
+
+                const cancelButton = card.querySelector(".js-cancel-event");
+                if (cancelButton) {
+                    cancelButton.addEventListener("click", () => {
+                        openCancelModal(event.id, event.title);
+                    });
+                }
+
                 list.appendChild(card);
             });
         }
@@ -489,6 +582,7 @@
             loading.classList.remove("hidden");
             empty.classList.add("hidden");
             error.classList.add("hidden");
+            document.getElementById("events-list").innerHTML = "";
 
             try {
                 managedEvents = await getManagingEvents(managerId);
@@ -503,7 +597,7 @@
                 renderManagedEvents(managedEvents);
             } catch (err) {
                 loading.classList.add("hidden");
-                error.textContent = err.message || "Failed to load events from the gateway.";
+                error.textContent = err.message || "Failed to load events.";
                 error.classList.remove("hidden");
             }
         }
@@ -534,6 +628,26 @@
             clearErrors(document.getElementById("edit-modal"));
             hideMessages("edit");
             document.getElementById("edit-modal").classList.add("hidden");
+        }
+
+        function openCancelModal(eventId, eventTitle) {
+            cancellingEventId = eventId;
+            cancellingEventTitle = eventTitle;
+            document.getElementById("cancel-modal-subtitle").textContent = `You're about to cancel "${eventTitle}". Add a reason before confirming.`;
+            document.getElementById("cancel-reason").value = "Logistical issues";
+            clearErrors(document.getElementById("cancel-modal"));
+            hideMessages("cancel");
+            document.getElementById("confirm-cancel-button").disabled = false;
+            document.getElementById("confirm-cancel-button").textContent = "Confirm Cancellation";
+            document.getElementById("cancel-modal").classList.remove("hidden");
+        }
+
+        function closeCancelModal() {
+            cancellingEventId = null;
+            cancellingEventTitle = "";
+            clearErrors(document.getElementById("cancel-modal"));
+            hideMessages("cancel");
+            document.getElementById("cancel-modal").classList.add("hidden");
         }
 
         function validateDateRange(startField, endField) {
@@ -726,7 +840,7 @@
             try {
                 const response = await updateEvent(editingEventId, buildEditPayload());
                 document.getElementById("edit-loading").classList.add("hidden");
-                showMessage("edit-success", `Updated "${response.event.title}" through the composite.`);
+                showMessage("edit-success", `Updated "${response.event.title}".`);
                 await loadManagedEvents();
 
                 setTimeout(() => {
@@ -738,28 +852,55 @@
             }
         }
 
-        async function confirmCancelEvent(eventId, eventTitle) {
-            const reason = window.prompt(`Why are you cancelling "${eventTitle}"?`, "Logistical issues");
-            if (reason === null) {
+        async function submitCancelEvent() {
+            if (!cancellingEventId) {
                 return;
             }
 
+            setManagerActionMessage(null);
+            const modal = document.getElementById("cancel-modal");
+            const reasonField = document.getElementById("cancel-reason");
+            const confirmButton = document.getElementById("confirm-cancel-button");
+            clearErrors(modal);
+            hideMessages("cancel");
+
+            if (!validateRequired(reasonField, "Enter a cancellation reason before continuing.")) {
+                return;
+            }
+
+            const reason = reasonField.value.trim();
+            confirmButton.disabled = true;
+            confirmButton.textContent = "Cancelling...";
+            document.getElementById("cancel-loading").classList.remove("hidden");
+
+            setManagerActionMessage(
+                "loading",
+                `Cancelling "${cancellingEventTitle}" and checking any related refunds now...`
+            );
+
             try {
-                const response = await cancelEvent(eventId, {
+                const response = await cancelEvent(cancellingEventId, {
                     managerId,
-                    reason: reason.trim() || "No reason provided"
+                    reason
                 });
 
                 const refundFlow = response?.data?.integration?.refundFlow;
-                const summary = refundFlow?.summary;
-                const suffix = summary
-                    ? ` Refunds processed: ${summary.successful}/${summary.processed}.`
-                    : "";
+                const message = formatCancellationResultMessage(cancellingEventTitle, refundFlow);
 
-                alert(`Cancelled "${eventTitle}".${suffix}`);
+                document.getElementById("cancel-loading").classList.add("hidden");
+                showMessage("cancel-success", message);
+                setManagerActionMessage("success", message);
                 await loadManagedEvents();
+                setTimeout(() => {
+                    closeCancelModal();
+                }, 1200);
             } catch (error) {
-                alert(error.message || "Unable to cancel the event.");
+                document.getElementById("cancel-loading").classList.add("hidden");
+                showMessage("cancel-error", error.message || "Unable to cancel the event.");
+                setManagerActionMessage("error", error.message || "Unable to cancel the event.");
+            } finally {
+                confirmButton.disabled = false;
+                confirmButton.textContent = "Confirm Cancellation";
             }
         }
 
@@ -775,7 +916,7 @@
             try {
                 const response = await createManagerEvent(buildCreatePayload());
                 document.getElementById("create-event-loading").classList.add("hidden");
-                showMessage("create-event-success", `Created "${response.event.title}" through the composite.`);
+                showMessage("create-event-success", `Created "${response.event.title}".`);
                 resetCreateForm();
                 await loadManagedEvents();
             } catch (err) {

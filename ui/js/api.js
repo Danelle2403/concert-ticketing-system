@@ -22,10 +22,18 @@ async function apiRequest(path, options = {}) {
         method = "GET",
         query,
         body,
+        headers = {},
+        includeAuth = true,
         baseUrl = API_BASE,
         timeoutMs = 15000
     } = options;
-    const requestOptions = { method, headers: {} };
+    const requestOptions = {
+        method,
+        headers: {
+            ...(includeAuth ? getAuthHeaders() : {}),
+            ...headers
+        }
+    };
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
     requestOptions.signal = controller.signal;
@@ -78,6 +86,15 @@ function getStoredUser() {
 
 function storeUser(user) {
     sessionStorage.setItem("user", JSON.stringify(user));
+}
+
+function getStoredAuthToken() {
+    return getStoredUser()?.authToken || null;
+}
+
+function getAuthHeaders() {
+    const authToken = getStoredAuthToken();
+    return authToken ? { Authorization: `Bearer ${authToken}` } : {};
 }
 
 function clearStoredSession() {
@@ -162,18 +179,29 @@ function normalizeEventRecord(event) {
 }
 
 // User Service
-async function loginUser(userId) {
-    return apiRequest(`/user/${userId}`, {
+async function loginUser(credentials) {
+    return apiRequest("/auth/login", {
+        method: "POST",
+        body: credentials,
+        includeAuth: false,
         baseUrl: USER_API_BASE,
         timeoutMs: 5000
     });
 }
 
 async function registerUser(data) {
-    return apiRequest("/user/new", {
+    return apiRequest("/auth/register", {
         method: "POST",
         body: data,
+        includeAuth: false,
         baseUrl: USER_API_BASE,
+        timeoutMs: 5000
+    });
+}
+
+async function getAuthenticatedUser() {
+    return apiRequest("/auth/me", {
+        baseUrl: API_BASE,
         timeoutMs: 5000
     });
 }
@@ -181,7 +209,6 @@ async function registerUser(data) {
 async function getUserEvents(userId) {
     return apiRequest("/user/events", {
         query: { userId },
-        baseUrl: USER_API_BASE,
         timeoutMs: 5000
     });
 }
@@ -193,14 +220,39 @@ async function getManagingEvents(userId) {
         }
     });
 
-    return ((payload?.data?.events) || []).map((eventRow) =>
-        normalizeEventRecord(eventRow.eventSummary || eventRow)
-    );
+    const eventRows = (payload?.data?.events) || [];
+
+    const hydratedEvents = await Promise.all(eventRows.map(async (eventRow) => {
+        const summary = eventRow.eventSummary || eventRow || {};
+        const eventId = eventRow.eventId ?? summary.id ?? summary.eventId;
+
+        const alreadyHasConfiguration =
+            Array.isArray(summary.pricingTiers) && Array.isArray(summary.seatSections);
+
+        if (!eventId || alreadyHasConfiguration) {
+            return normalizeEventRecord(summary);
+        }
+
+        try {
+            const detail = await getEventById(eventId);
+            return normalizeEventRecord({
+                ...summary,
+                ...detail,
+                id: detail.id ?? eventId,
+                status: eventRow.eventStatus || detail.statusLabel || summary.status
+            });
+        } catch (_error) {
+            return normalizeEventRecord(summary);
+        }
+    }));
+
+    return hydratedEvents;
 }
 
 // Event Service via Kong
 async function getEvents(filters = {}) {
     const payload = await apiRequest("/events", {
+        includeAuth: false,
         query: {
             includeConfig: true,
             purchasableOnly: filters.purchasableOnly ?? true,
@@ -215,7 +267,9 @@ async function getEvents(filters = {}) {
 }
 
 async function getEventById(eventId) {
-    const payload = await apiRequest(`/events/${eventId}`);
+    const payload = await apiRequest(`/events/${eventId}`, {
+        includeAuth: false
+    });
     return normalizeEventRecord(payload.data || {});
 }
 

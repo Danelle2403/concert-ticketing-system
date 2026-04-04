@@ -11,6 +11,10 @@ USER_SERVICE_URL = os.environ.get("USER_SERVICE_URL", "http://localhost:5001")
 SEAT_INVENTORY_URL = os.environ.get("SEAT_INVENTORY_URL", "http://localhost:5004")
 MANAGER_EMAIL = os.environ.get("MANAGER_EMAIL", "manager@example.com")
 MANAGER_NAME = os.environ.get("MANAGER_NAME", "Maya Manager")
+MANAGER_PASSWORD = os.environ.get("MANAGER_PASSWORD", "Concert123!")
+INTERNAL_SERVICE_TOKEN = os.environ.get(
+    "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
+)
 DEMO_STATE_PATH = Path(__file__).resolve().parents[1] / "demo" / "local_demo_state.json"
 
 
@@ -58,8 +62,8 @@ def build_sample_payloads(manager_id):
     return samples
 
 
-def req_json(method, url, payload=None, timeout=10):
-    response = requests.request(method, url, json=payload, timeout=timeout)
+def req_json(method, url, payload=None, timeout=10, headers=None):
+    response = requests.request(method, url, json=payload, timeout=timeout, headers=headers)
     try:
         body = response.json()
     except Exception:
@@ -68,7 +72,8 @@ def req_json(method, url, payload=None, timeout=10):
 
 
 def ensure_manager():
-    code, body = req_json("GET", f"{USER_SERVICE_URL}/users")
+    internal_headers = {"X-Internal-Service-Token": INTERNAL_SERVICE_TOKEN}
+    code, body = req_json("GET", f"{USER_SERVICE_URL}/users", headers=internal_headers)
     if code != 200:
         raise RuntimeError(f"Unable to read User Service users: {body}")
 
@@ -82,11 +87,28 @@ def ensure_manager():
     code, body = req_json(
         "POST",
         f"{USER_SERVICE_URL}/user/new",
-        {"name": MANAGER_NAME, "email": MANAGER_EMAIL, "role": "manager"},
+        {
+            "name": MANAGER_NAME,
+            "email": MANAGER_EMAIL,
+            "password": MANAGER_PASSWORD,
+            "role": "manager",
+        },
+        headers=internal_headers,
     )
     if code != 201:
         raise RuntimeError(f"Unable to create manager user: {body}")
     return body["id"]
+
+
+def login_manager():
+    code, body = req_json(
+        "POST",
+        f"{USER_SERVICE_URL}/auth/login",
+        {"email": MANAGER_EMAIL, "password": MANAGER_PASSWORD},
+    )
+    if code != 200:
+        raise RuntimeError(f"Unable to authenticate manager user: {body}")
+    return body["authToken"]
 
 
 def ensure_inventory_seeded(event_id):
@@ -95,8 +117,12 @@ def ensure_inventory_seeded(event_id):
         raise RuntimeError(f"Seat Inventory bootstrap for {event_id} is unavailable: {body}")
 
 
-def list_existing_titles(manager_id):
-    code, body = req_json("GET", f"{COMPOSITE_URL}/manager/events?managerId={manager_id}")
+def list_existing_titles(manager_id, auth_token):
+    code, body = req_json(
+        "GET",
+        f"{COMPOSITE_URL}/manager/events?managerId={manager_id}",
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
     if code != 200:
         raise RuntimeError(f"Unable to list existing manager events: {body}")
 
@@ -107,8 +133,13 @@ def list_existing_titles(manager_id):
     }
 
 
-def seed_event(payload):
-    code, body = req_json("POST", f"{COMPOSITE_URL}/manager/events", payload)
+def seed_event(payload, auth_token):
+    code, body = req_json(
+        "POST",
+        f"{COMPOSITE_URL}/manager/events",
+        payload,
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
     if code != 201:
         raise RuntimeError(f"Failed to seed event: {body}")
     return body
@@ -116,7 +147,8 @@ def seed_event(payload):
 
 def main():
     manager_id = ensure_manager()
-    existing_titles = list_existing_titles(manager_id)
+    auth_token = login_manager()
+    existing_titles = list_existing_titles(manager_id, auth_token)
     samples = build_sample_payloads(manager_id)
 
     for payload in samples:
@@ -124,7 +156,7 @@ def main():
             print(f"Skipping existing seed: {payload['title']}")
             continue
 
-        body = seed_event(payload)
+        body = seed_event(payload, auth_token)
         event_id = body["data"]["event"]["id"]
         ensure_inventory_seeded(event_id)
         print(f"Seeded {payload['title']} -> {event_id}")

@@ -1,4 +1,17 @@
+import os
+
 import requests
+
+
+INTERNAL_SERVICE_TOKEN = os.environ.get(
+    "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
+)
+INTERNAL_SERVICE_PREFIXES = (
+    "http://user-service:",
+    "http://event-service:",
+    "http://seat-inventory:",
+    "http://refund-composite:",
+)
 
 
 class ServiceError(Exception):
@@ -11,8 +24,11 @@ class ServiceError(Exception):
 
 
 def request_json(method, url, payload=None, timeout=8):
+    headers = None
+    if any(str(url).startswith(prefix) for prefix in INTERNAL_SERVICE_PREFIXES):
+        headers = {"X-Internal-Service-Token": INTERNAL_SERVICE_TOKEN}
     try:
-        response = requests.request(method, url, json=payload, timeout=timeout)
+        response = requests.request(method, url, json=payload, timeout=timeout, headers=headers)
     except requests.RequestException as error:
         raise ServiceError(
             502,

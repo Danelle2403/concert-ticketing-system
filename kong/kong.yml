@@ -1,16 +1,67 @@
 _format_version: "2.1"
 _transform: true
 
+consumers:
+  - username: concert-hub-ui
+    jwt_secrets:
+      - key: concert-hub-ui
+        algorithm: HS256
+        secret: concert-hub-local-dev-secret-2026
+
 services:
 
   - name: user-service
     url: http://user-service:5000
     routes:
-      - name: user-routes
+      - name: auth-routes
         paths:
-          - /user
-          - /users
+          - /auth
         strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - POST
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
+      - name: user-protected-routes
+        paths:
+          - /user/events
+          - /user/managing
+        methods:
+          - GET
+          - OPTIONS
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
+          - name: jwt
+            config:
+              header_names:
+                - authorization
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+              run_on_preflight: false
 
   - name: event-service
     url: http://event-service:5000
@@ -21,6 +72,20 @@ services:
         methods:
           - GET
         strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
 
   - name: purchase-composite
     url: http://purchase-composite:5000
@@ -29,6 +94,29 @@ services:
         paths:
           - /purchase
         strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - POST
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
+          - name: jwt
+            config:
+              header_names:
+                - authorization
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+              run_on_preflight: false
 
   - name: refund-composite
     url: http://refund-composite:5000
@@ -37,17 +125,93 @@ services:
         paths:
           - /refunds
         strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - POST
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
+          - name: jwt
+            config:
+              header_names:
+                - authorization
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+              run_on_preflight: false
 
   - name: edit-event-composite
     url: http://edit-event-composite:5000
     routes:
-      - name: edit-event-routes
+      - name: manager-event-routes
         paths:
           - /manager/events
-          - /events
         methods:
           - GET
           - PUT
           - POST
           - OPTIONS
         strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - POST
+                - PUT
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
+          - name: jwt
+            config:
+              header_names:
+                - authorization
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+              run_on_preflight: false
+      - name: manager-event-alias-routes
+        paths:
+          - /events
+        methods:
+          - PUT
+          - POST
+          - OPTIONS
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - POST
+                - PUT
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
+          - name: jwt
+            config:
+              header_names:
+                - authorization
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+              run_on_preflight: false

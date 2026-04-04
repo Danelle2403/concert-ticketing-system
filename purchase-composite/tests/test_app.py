@@ -8,6 +8,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app as purchase_app
 
+AUTH_USER = {"id": 2, "userId": 2, "email": "fan2@example.com", "role": "fan"}
+INTERNAL_HEADERS = {"X-Internal-Service-Token": "concert-hub-internal-dev-token"}
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -24,10 +27,9 @@ def client(tmp_path, monkeypatch):
 
 def test_checkout_uses_live_order_service_contract(client, monkeypatch):
     captured_order_payload = {}
+    monkeypatch.setattr(purchase_app, "authenticate_request_user", lambda: dict(AUTH_USER))
 
     def fake_req_json(method, url, payload=None, timeout=8):
-        if method == "GET" and url.endswith("/user/2"):
-            return 200, {"id": 2, "userId": 2}
         if method == "GET" and url.endswith("/events/1"):
             return 404, {"error": "not found"}
         if method == "POST" and url.endswith("/inventory/hold"):
@@ -74,7 +76,11 @@ def test_ticket_status_update_pushes_external_order_status(client, monkeypatch):
 
     monkeypatch.setattr(purchase_app, "req_json", fake_req_json)
 
-    response = client.post("/purchase/ticket/tkt-002/status", json={"status": "REFUNDED"})
+    response = client.post(
+        "/purchase/ticket/tkt-002/status",
+        json={"status": "REFUNDED"},
+        headers=INTERNAL_HEADERS,
+    )
 
     assert response.status_code == 200
     assert response.get_json()["status"] == "REFUNDED"
@@ -98,10 +104,9 @@ def test_ticket_status_update_pushes_external_order_status(client, monkeypatch):
 def test_checkout_session_and_confirm_use_stripe_flow(client, monkeypatch):
     captured_order_payload = {}
     sent_notifications = []
+    monkeypatch.setattr(purchase_app, "authenticate_request_user", lambda: dict(AUTH_USER))
 
     def fake_req_json(method, url, payload=None, timeout=8):
-        if method == "GET" and url.endswith("/user/2"):
-            return 200, {"id": 2, "userId": 2, "email": "fan2@example.com"}
         if method == "GET" and url.endswith("/events/1"):
             return 404, {"error": "not found"}
         if method == "POST" and url.endswith("/inventory/hold"):
@@ -193,3 +198,15 @@ def test_create_external_order_rejects_non_numeric_ticket_ids():
             payment_charge_id="ch_123",
             amount_paid=80.0,
         )
+
+
+def test_purchase_status_rejects_other_users(client, monkeypatch):
+    monkeypatch.setattr(
+        purchase_app,
+        "authenticate_request_user",
+        lambda: {"id": 99, "userId": 99, "email": "manager@example.com", "role": "manager"},
+    )
+
+    response = client.get("/purchase/ORDER-DEMO-2/status")
+
+    assert response.status_code == 403

@@ -7,6 +7,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app as refund_app
 
+INTERNAL_HEADERS = {"X-Internal-Service-Token": "concert-hub-internal-dev-token"}
+
 
 @pytest.fixture
 def client():
@@ -85,7 +87,7 @@ def test_refund_single_normalizes_prefixed_ticket_and_updates_downstream_service
 
     monkeypatch.setattr(refund_app, "req_json", _req_json)
 
-    response = client.post("/refunds/tkt-002")
+    response = client.post("/refunds/tkt-002", headers=INTERNAL_HEADERS)
 
     assert response.status_code == 200
     payload = response.get_json()
@@ -104,11 +106,12 @@ def test_refund_single_normalizes_prefixed_ticket_and_updates_downstream_service
     assert state["notifications"][0]["refundId"] == "re_123"
 
 
-def test_refund_event_batches_active_tickets_for_normalized_event(client, monkeypatch):
+def test_refund_event_batches_non_terminal_tickets_for_cancelled_event(client, monkeypatch):
     state = {
         "tickets": {
             "2": {"ticketId": "2", "eventId": "1", "userId": 2, "status": "active"},
-            "5": {"ticketId": "5", "eventId": "1", "userId": 1, "status": "active"},
+            "5": {"ticketId": "5", "eventId": "1", "userId": 1, "status": "pending_refund"},
+            "6": {"ticketId": "6", "eventId": "1", "userId": 1, "status": "cancelled"},
         },
         "users": {
             "1": {"id": 1, "name": "Alice Fan", "email": "fan@example.com"},
@@ -147,8 +150,8 @@ def test_refund_event_batches_active_tickets_for_normalized_event(client, monkey
     }
 
     def _req_json(method, url, payload=None, timeout=8):
-        if method == "GET" and url.endswith("/user/tickets/by-event/1?status=active"):
-            return 200, {"tickets": [dict(state["tickets"]["2"]), dict(state["tickets"]["5"])]}
+        if method == "GET" and url.endswith("/user/tickets/by-event/1"):
+            return 200, {"tickets": [dict(state["tickets"]["2"]), dict(state["tickets"]["5"]), dict(state["tickets"]["6"])]}
         if method == "GET" and url.endswith("/user/ticket/2"):
             return 200, dict(state["tickets"]["2"])
         if method == "GET" and url.endswith("/user/ticket/5"):
@@ -185,7 +188,7 @@ def test_refund_event_batches_active_tickets_for_normalized_event(client, monkey
 
     monkeypatch.setattr(refund_app, "req_json", _req_json)
 
-    response = client.post("/refunds/event/con-001")
+    response = client.post("/refunds/event/con-001", headers=INTERNAL_HEADERS)
 
     assert response.status_code == 200
     payload = response.get_json()
@@ -200,3 +203,22 @@ def test_refund_event_batches_active_tickets_for_normalized_event(client, monkey
     ]
     assert state["purchase_updates"] == [("2", "REFUNDED"), ("5", "REFUNDED")]
     assert state["refund_calls"] == ["pi_2", "pi_5"]
+
+
+def test_refund_ticket_rejects_other_user(client, monkeypatch):
+    monkeypatch.setattr(
+        refund_app,
+        "authenticate_request_user",
+        lambda: {"id": 99, "userId": 99, "email": "manager@example.com", "role": "manager"},
+    )
+
+    def _req_json(method, url, payload=None, timeout=8):
+        if method == "GET" and url.endswith("/user/ticket/2"):
+            return 200, {"ticketId": "2", "userId": 2, "status": "active"}
+        raise AssertionError(f"Unexpected request: {method} {url}")
+
+    monkeypatch.setattr(refund_app, "req_json", _req_json)
+
+    response = client.post("/refunds/tkt-002")
+
+    assert response.status_code == 403

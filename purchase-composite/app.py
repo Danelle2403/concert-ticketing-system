@@ -29,6 +29,17 @@ DB_PATH = os.environ.get("PURCHASE_DB_PATH", "/data/purchase.db")
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
 CHECKOUT_HOLD_TTL_SECONDS = int(os.environ.get("CHECKOUT_HOLD_TTL_SECONDS", "600"))
 DEFAULT_CURRENCY = os.environ.get("DEFAULT_CURRENCY", "sgd")
+INTERNAL_SERVICE_TOKEN = os.environ.get(
+    "INTERNAL_SERVICE_TOKEN", "concert-hub-internal-dev-token"
+)
+INTERNAL_SERVICE_PREFIXES = (
+    "http://user-service:",
+    "http://event-service:",
+    "http://seat-inventory:",
+    "http://ticket-atomic:",
+    "http://payment-service:",
+    "http://notification-service:",
+)
 
 
 def env_flag(name, default=False):
@@ -36,6 +47,12 @@ def env_flag(name, default=False):
     if raw_value is None:
         return default
     return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def internal_service_headers_for_url(url):
+    if any(str(url).startswith(prefix) for prefix in INTERNAL_SERVICE_PREFIXES):
+        return {"X-Internal-Service-Token": INTERNAL_SERVICE_TOKEN}
+    return {}
 
 DEMO_STATE_PATH = Path(__file__).resolve().parents[1] / "demo" / "local_demo_state.json"
 
@@ -199,7 +216,13 @@ def normalize_purchase_status(created_rows):
 
 
 def req_json(method, url, payload=None, timeout=8):
-    response = requests.request(method, url, json=payload, timeout=timeout)
+    response = requests.request(
+        method,
+        url,
+        json=payload,
+        timeout=timeout,
+        headers=internal_service_headers_for_url(url) or None,
+    )
     try:
         body = response.json()
     except Exception:
@@ -211,6 +234,45 @@ def extract_data(body):
     if isinstance(body, dict) and isinstance(body.get("data"), dict):
         return body["data"]
     return body
+
+
+def get_bearer_authorization():
+    header = str(request.headers.get("Authorization") or "").strip()
+    if not header.lower().startswith("bearer "):
+        return None
+    return header
+
+
+def authenticate_request_user():
+    authorization = get_bearer_authorization()
+    if not authorization:
+        return None
+
+    response = requests.request(
+        "GET",
+        f"{USER_SERVICE_URL}/auth/me",
+        timeout=8,
+        headers={"Authorization": authorization},
+    )
+    if response.status_code != 200:
+        return None
+
+    try:
+        return extract_data(response.json())
+    except Exception:
+        return None
+
+
+def require_authenticated_user():
+    user = authenticate_request_user()
+    if not user:
+        return None, (jsonify({"error": "Unauthorized"}), 401)
+    return user, None
+
+
+def has_internal_service_access():
+    provided = str(request.headers.get("X-Internal-Service-Token") or "")
+    return bool(provided) and provided == INTERNAL_SERVICE_TOKEN
 
 
 def to_minor_units(amount):
@@ -698,6 +760,8 @@ def purchase_config():
 
 @app.route("/purchase/admin/reset-demo", methods=["POST"])
 def reset_purchase_demo():
+    if not has_internal_service_access():
+        return jsonify({"error": "Forbidden"}), 403
     data = request.get_json(silent=True) or {}
     purchases = data.get("purchases")
     ticket_maps = data.get("ticketMaps")
@@ -724,6 +788,10 @@ def reset_purchase_demo():
 
 @app.route("/purchase/checkout/session", methods=["POST"])
 def create_checkout_session():
+    auth_user, error_response = require_authenticated_user()
+    if error_response:
+        return error_response
+
     data = request.get_json() or {}
 
     user_id_raw = data.get("userId")
@@ -732,21 +800,21 @@ def create_checkout_session():
     buyer_name = str(data.get("name") or "").strip()
     buyer_email = str(data.get("email") or "").strip()
 
-    if not user_id_raw or not event_id:
-        return jsonify({"error": "userId and eventId are required"}), 400
+    if not event_id:
+        return jsonify({"error": "eventId is required"}), 400
     if quantity <= 0:
         return jsonify({"error": "quantity must be > 0"}), 400
     if not buyer_name or not buyer_email:
         return jsonify({"error": "name and email are required"}), 400
 
-    try:
-        user_id = normalize_user_id(user_id_raw)
-    except (TypeError, ValueError):
-        return jsonify({"error": "userId must be an integer"}), 400
-
-    code, user = req_json("GET", f"{USER_SERVICE_URL}/user/{user_id}")
-    if code != 200:
-        return jsonify({"error": "User not found"}), 404
+    user_id = int(auth_user["userId"])
+    if user_id_raw is not None:
+        try:
+            requested_user_id = normalize_user_id(user_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "userId must be an integer"}), 400
+        if requested_user_id != user_id:
+            return jsonify({"error": "Forbidden"}), 403
 
     event = fetch_event(event_id)
     if not event:
@@ -772,7 +840,7 @@ def create_checkout_session():
             amount_minor=amount_minor,
             currency=currency,
             description=f"Concert purchase for {event_title(event)}",
-            receipt_email=buyer_email or user.get("email"),
+            receipt_email=buyer_email or auth_user.get("email"),
             metadata={
                 "checkoutSessionId": checkout_session_id,
                 "eventId": str(event_id),
@@ -803,7 +871,7 @@ def create_checkout_session():
                 amount_per_ticket * quantity,
                 currency,
                 buyer_name,
-                buyer_email or user.get("email"),
+                buyer_email or auth_user.get("email"),
                 json.dumps([hold["holdId"] for hold in created_holds]),
                 payment_intent["paymentIntentId"],
                 payment_intent["clientSecret"],
@@ -849,6 +917,10 @@ def create_checkout_session():
 
 @app.route("/purchase/checkout/confirm", methods=["POST"])
 def confirm_checkout_session():
+    auth_user, error_response = require_authenticated_user()
+    if error_response:
+        return error_response
+
     data = request.get_json() or {}
     checkout_session_id = str(data.get("checkoutSessionId") or "").strip()
     payment_intent_id = str(data.get("paymentIntentId") or "").strip()
@@ -873,6 +945,9 @@ def confirm_checkout_session():
             return jsonify({"error": "Checkout session not found"}), 404
 
         checkout_session = serialize_checkout_session_row(row)
+        if int(checkout_session["userId"]) != int(auth_user["userId"]):
+            conn.close()
+            return jsonify({"error": "Forbidden"}), 403
         if (
             payment_intent_id
             and checkout_session.get("paymentIntentId")
@@ -1143,25 +1218,29 @@ def confirm_checkout_session():
 
 @app.route("/purchase/checkout", methods=["POST"])
 def checkout():
+    auth_user, error_response = require_authenticated_user()
+    if error_response:
+        return error_response
+
     data = request.get_json() or {}
 
     user_id_raw = data.get("userId")
     event_id = normalize_event_id(data.get("eventId"))
     quantity = int(data.get("quantity", 1))
 
-    if not user_id_raw or not event_id:
-        return jsonify({"error": "userId and eventId are required"}), 400
+    if not event_id:
+        return jsonify({"error": "eventId is required"}), 400
     if quantity <= 0:
         return jsonify({"error": "quantity must be > 0"}), 400
 
-    try:
-        user_id = normalize_user_id(user_id_raw)
-    except (TypeError, ValueError):
-        return jsonify({"error": "userId must be an integer"}), 400
-
-    code, _user = req_json("GET", f"{USER_SERVICE_URL}/user/{user_id}")
-    if code != 200:
-        return jsonify({"error": "User not found"}), 404
+    user_id = int(auth_user["userId"])
+    if user_id_raw is not None:
+        try:
+            requested_user_id = normalize_user_id(user_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "userId must be an integer"}), 400
+        if requested_user_id != user_id:
+            return jsonify({"error": "Forbidden"}), 403
 
     event = fetch_event(event_id)
     if not event:
@@ -1350,6 +1429,10 @@ def checkout():
 
 @app.route("/purchase/<purchaseId>/status", methods=["GET"])
 def purchase_status(purchaseId):
+    auth_user, error_response = require_authenticated_user()
+    if error_response:
+        return error_response
+
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT * FROM purchases WHERE purchaseId = ?", (purchaseId,))
@@ -1360,12 +1443,16 @@ def purchase_status(purchaseId):
         return jsonify({"error": "Purchase not found"}), 404
 
     payload = serialize_purchase_row(row)
+    if int(payload["userId"]) != int(auth_user["userId"]):
+        return jsonify({"error": "Forbidden"}), 403
     payload["orders"] = [fetch_external_order(order_id) for order_id in payload["orderIds"]]
     return jsonify(payload), 200
 
 
 @app.route("/purchase/ticket/<ticketId>", methods=["GET"])
 def ticket_lookup(ticketId):
+    if not has_internal_service_access():
+        return jsonify({"error": "Forbidden"}), 403
     ticketId = normalize_ticket_id(ticketId)
     conn = get_db()
     cur = conn.cursor()
@@ -1380,6 +1467,8 @@ def ticket_lookup(ticketId):
 
 @app.route("/purchase/ticket/<ticketId>/status", methods=["POST"])
 def ticket_update_status(ticketId):
+    if not has_internal_service_access():
+        return jsonify({"error": "Forbidden"}), 403
     ticketId = normalize_ticket_id(ticketId)
     data = request.get_json() or {}
     status = str(data.get("status") or "").strip().upper()

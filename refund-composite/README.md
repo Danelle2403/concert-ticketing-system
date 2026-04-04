@@ -19,6 +19,11 @@ Scenario orchestration service for ticket refunds and event-wide refund batches.
 - `POST /refunds/<ticketId>`
 - `POST /refunds/event/<eventId>`
 
+Auth:
+
+- `POST /refunds/<ticketId>` expects a bearer token for the ticket owner
+- `POST /refunds/event/<eventId>` is manager-only from the browser and also accepts the internal service token for orchestrated event cancellations
+
 ## Current state
 
 - single-ticket and event-batch refund flows are implemented
