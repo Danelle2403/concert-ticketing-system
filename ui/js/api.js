@@ -1,5 +1,7 @@
 const API_BASE = "http://localhost:8000";
 const USER_API_BASE = "http://localhost:5001";
+const EVENT_API_BASE = "http://localhost:5003";
+const INVENTORY_API_BASE = "http://localhost:5004";
 
 function buildUrl(path, query = {}) {
     return buildAbsoluteUrl(API_BASE, path, query);
@@ -251,26 +253,57 @@ async function getManagingEvents(userId) {
 
 // Event Service via Kong
 async function getEvents(filters = {}) {
-    const payload = await apiRequest("/events", {
-        includeAuth: false,
-        query: {
-            includeConfig: true,
-            purchasableOnly: filters.purchasableOnly ?? true,
-            status: filters.status,
-            managerId: filters.managerId,
-            keyword: filters.keyword,
-            venue: filters.venue
-        }
-    });
+    const query = {
+        includeConfig: true,
+        purchasableOnly: filters.purchasableOnly ?? true,
+        status: filters.status,
+        managerId: filters.managerId,
+        keyword: filters.keyword,
+        venue: filters.venue
+    };
 
-    return (payload.data || []).map(normalizeEventRecord);
+    try {
+        const payload = await apiRequest("/events", {
+            includeAuth: false,
+            query,
+            timeoutMs: 5000
+        });
+        return (payload.data || []).map(normalizeEventRecord);
+    } catch (_error) {
+        const payload = await apiRequest("/events", {
+            includeAuth: false,
+            baseUrl: EVENT_API_BASE,
+            query,
+            timeoutMs: 5000
+        });
+        return (payload.data || []).map(normalizeEventRecord);
+    }
 }
 
 async function getEventById(eventId) {
-    const payload = await apiRequest(`/events/${eventId}`, {
-        includeAuth: false
+    try {
+        const payload = await apiRequest(`/events/${eventId}`, {
+            includeAuth: false,
+            timeoutMs: 5000
+        });
+        return normalizeEventRecord(payload.data || {});
+    } catch (_error) {
+        const payload = await apiRequest(`/events/${eventId}`, {
+            includeAuth: false,
+            baseUrl: EVENT_API_BASE,
+            timeoutMs: 5000
+        });
+        return normalizeEventRecord(payload.data || {});
+    }
+}
+
+async function getInventorySnapshot() {
+    const payload = await apiRequest("/inventory", {
+        includeAuth: false,
+        baseUrl: INVENTORY_API_BASE,
+        timeoutMs: 5000
     });
-    return normalizeEventRecord(payload.data || {});
+    return payload.inventory || [];
 }
 
 // Create/Edit Event Composite via Kong
