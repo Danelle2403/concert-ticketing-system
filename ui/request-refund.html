@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=20260404-ui-refresh-2">
 </head>
 <body>
 
@@ -57,8 +57,9 @@
         <div class="modal-content">
             <h3>Confirm Refund</h3>
             <p id="modal-message">Are you sure you want to refund this ticket?</p>
+            <div id="refund-status-detail" class="event-aux hidden"></div>
             <div id="refund-success" class="success-msg hidden">
-                ✅ Refund requested successfully!
+                Refund completed successfully.
             </div>
             <div id="refund-error" class="error-msg hidden">
                 Refund failed. Please try again.
@@ -75,7 +76,7 @@
         </div>
     </div>
 
-    <script src="js/api.js"></script>
+    <script src="js/api.js?v=20260404-ui-refresh-2"></script>
     <script>
 
         // Check login
@@ -83,6 +84,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         let selectedTicketId = null;
         let selectedRefundSource = "customer_request";
+        let selectedTicketName = "";
 
         if (!user) {
             document.getElementById("loading").classList.add("hidden");
@@ -122,10 +124,6 @@
                     const refundState = deriveRefundState(ticket, eventRecord);
                     const card = document.createElement("div");
                     card.className = "ticket-card";
-                    const ticketIdArg = JSON.stringify(ticket.ticketId);
-                    const eventNameArg = JSON.stringify(ticket.eventName);
-                    const refundSourceArg = JSON.stringify(refundState.source);
-                    const modalMessageArg = JSON.stringify(refundState.modalMessage);
                     if (
                         urlParams.get("ticketId") === ticket.ticketId ||
                         urlParams.get("eventId") === ticket.eventId
@@ -145,15 +143,22 @@
                             <p>${refundState.message}</p>
                         </div>
                         <div class="ticket-actions">
-                            <button 
-                                class="btn-danger"
-                                onclick="openRefundModal(${ticketIdArg}, ${eventNameArg}, ${refundSourceArg}, ${modalMessageArg})"
-                                ${refundState.canRefund ? '' : 'disabled'}
-                            >
+                            <button class="btn-danger refund-action-btn" ${refundState.canRefund ? '' : 'disabled'}>
                                 ${refundState.buttonLabel}
                             </button>
                         </div>
                     `;
+                    const actionButton = card.querySelector(".refund-action-btn");
+                    if (actionButton && refundState.canRefund) {
+                        actionButton.addEventListener("click", () => {
+                            openRefundModal(
+                                ticket.ticketId,
+                                ticket.eventName,
+                                refundState.source,
+                                refundState.modalMessage
+                            );
+                        });
+                    }
                     list.appendChild(card);
                 });
 
@@ -218,19 +223,24 @@
 
         function openRefundModal(ticketId, eventName, refundSource, modalMessage) {
             selectedTicketId = ticketId;
+            selectedTicketName = eventName || "";
             selectedRefundSource = refundSource || "customer_request";
             document.getElementById("modal-message").textContent = modalMessage ||
                 `Are you sure you want to refund your ticket for "${eventName}"?`;
             document.getElementById("refund-success").classList.add("hidden");
             document.getElementById("refund-error").classList.add("hidden");
             document.getElementById("refund-loading").classList.add("hidden");
+            document.getElementById("refund-status-detail").classList.add("hidden");
+            document.getElementById("refund-status-detail").textContent = "";
             document.getElementById("refund-modal").classList.remove("hidden");
             document.getElementById("confirm-refund-btn").disabled = false;
+            document.getElementById("confirm-refund-btn").textContent = "Yes, Refund";
         }
 
         function closeModal() {
             document.getElementById("refund-modal").classList.add("hidden");
             selectedTicketId = null;
+            selectedTicketName = "";
             selectedRefundSource = "customer_request";
         }
 
@@ -238,31 +248,48 @@
         async function confirmRefund() {
             if (!selectedTicketId) return;
 
-            document.getElementById("refund-loading").classList.remove("hidden");
-            document.getElementById("confirm-refund-btn").disabled = true;
+            const confirmButton = document.getElementById("confirm-refund-btn");
+            const loadingBox = document.getElementById("refund-loading");
+            const successBox = document.getElementById("refund-success");
+            const errorBox = document.getElementById("refund-error");
+            const detailBox = document.getElementById("refund-status-detail");
+
+            successBox.classList.add("hidden");
+            errorBox.classList.add("hidden");
+            detailBox.classList.remove("hidden");
+            detailBox.textContent = `Submitting refund request for "${selectedTicketName}"...`;
+            loadingBox.classList.remove("hidden");
+            confirmButton.disabled = true;
+            confirmButton.textContent = "Processing...";
 
             try {
                 const data = await requestRefundByTicket(selectedTicketId, {
                     source: selectedRefundSource
                 });
-                document.getElementById("refund-loading").classList.add("hidden");
+                loadingBox.classList.add("hidden");
 
-                if (data && data.refundId) {
-                    document.getElementById("refund-success").classList.remove("hidden");
-                    // Reload tickets after short delay
+                if (data && (data.refundId || data.status === "refunded")) {
+                    successBox.classList.remove("hidden");
+                    detailBox.textContent = data.refundId
+                        ? `Refund ${data.refundId} completed. Updating your tickets now.`
+                        : "Refund completed. Updating your tickets now.";
                     setTimeout(() => {
                         closeModal();
                         location.reload();
                     }, 2000);
                 } else {
-                    document.getElementById("refund-error").classList.remove("hidden");
-                    document.getElementById("confirm-refund-btn").disabled = false;
+                    errorBox.classList.remove("hidden");
+                    detailBox.textContent = data?.error || "The refund request did not complete. Please try again.";
+                    confirmButton.disabled = false;
+                    confirmButton.textContent = "Try Again";
                 }
 
             } catch (err) {
-                document.getElementById("refund-loading").classList.add("hidden");
-                document.getElementById("refund-error").classList.remove("hidden");
-                document.getElementById("confirm-refund-btn").disabled = false;
+                loadingBox.classList.add("hidden");
+                errorBox.classList.remove("hidden");
+                detailBox.textContent = err?.message || "Refund failed. Please try again.";
+                confirmButton.disabled = false;
+                confirmButton.textContent = "Try Again";
             }
         }
 

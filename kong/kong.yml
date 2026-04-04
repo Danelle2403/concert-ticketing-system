@@ -17,14 +17,43 @@ services:
         paths:
           - /auth
         strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - POST
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
       - name: user-protected-routes
         paths:
           - /user/events
           - /user/managing
         methods:
           - GET
+          - OPTIONS
         strip_path: false
         plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
           - name: jwt
             config:
               header_names:
@@ -32,6 +61,7 @@ services:
               key_claim_name: iss
               claims_to_verify:
                 - exp
+              run_on_preflight: false
 
   - name: event-service
     url: http://event-service:5000
@@ -42,6 +72,20 @@ services:
         methods:
           - GET
         strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
 
   - name: purchase-composite
     url: http://purchase-composite:5000
@@ -51,6 +95,20 @@ services:
           - /purchase
         strip_path: false
         plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - POST
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
           - name: jwt
             config:
               header_names:
@@ -58,6 +116,7 @@ services:
               key_claim_name: iss
               claims_to_verify:
                 - exp
+              run_on_preflight: false
 
   - name: refund-composite
     url: http://refund-composite:5000
@@ -67,6 +126,19 @@ services:
           - /refunds
         strip_path: false
         plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - POST
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
           - name: jwt
             config:
               header_names:
@@ -74,6 +146,7 @@ services:
               key_claim_name: iss
               claims_to_verify:
                 - exp
+              run_on_preflight: false
 
   - name: edit-event-composite
     url: http://edit-event-composite:5000
@@ -88,6 +161,21 @@ services:
           - OPTIONS
         strip_path: false
         plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - POST
+                - PUT
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
           - name: jwt
             config:
               header_names:
@@ -95,6 +183,7 @@ services:
               key_claim_name: iss
               claims_to_verify:
                 - exp
+              run_on_preflight: false
       - name: manager-event-alias-routes
         paths:
           - /events
@@ -104,6 +193,20 @@ services:
           - OPTIONS
         strip_path: false
         plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - POST
+                - PUT
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
           - name: jwt
             config:
               header_names:
@@ -111,3 +214,4 @@ services:
               key_claim_name: iss
               claims_to_verify:
                 - exp
+              run_on_preflight: false

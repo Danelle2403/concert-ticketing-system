@@ -228,6 +228,7 @@ async function getManagingEvents(userId) {
 // Event Service via Kong
 async function getEvents(filters = {}) {
     const payload = await apiRequest("/events", {
+        includeAuth: false,
         query: {
             includeConfig: true,
             purchasableOnly: filters.purchasableOnly ?? true,
@@ -242,7 +243,9 @@ async function getEvents(filters = {}) {
 }
 
 async function getEventById(eventId) {
-    const payload = await apiRequest(`/events/${eventId}`);
+    const payload = await apiRequest(`/events/${eventId}`, {
+        includeAuth: false
+    });
     return normalizeEventRecord(payload.data || {});
 }
 

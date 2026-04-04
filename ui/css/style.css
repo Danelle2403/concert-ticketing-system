@@ -1153,14 +1153,14 @@ a:hover { color: var(--text-primary); }
     gap: 8px;
 }
 
-.form-group label {
+.form-group > label {
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--text-secondary);
     letter-spacing: 0.3px;
 }
 
-.form-group input,
+.form-group > input,
 .form-group select,
 .form-group textarea {
     padding: 12px 16px;
@@ -1176,18 +1176,18 @@ a:hover { color: var(--text-primary); }
     cursor: text;
 }
 
-.form-group input:focus,
+.form-group > input:focus,
 .form-group select:focus,
 .form-group textarea:focus { border-color: var(--border-hover); }
 
-.form-group.has-error input,
+.form-group.has-error > input,
 .form-group.has-error select,
 .form-group.has-error textarea {
     border-color: rgba(248, 113, 113, 0.85);
     box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.12);
 }
 
-.form-group input::placeholder { color: var(--text-muted); }
+.form-group > input::placeholder { color: var(--text-muted); }
 .form-group select option { background: var(--bg-secondary); }
 .form-group select { cursor: none; }
 .form-group textarea {
@@ -1308,6 +1308,19 @@ a:hover { color: var(--text-primary); }
     color: var(--blush);
     font-size: 0.9rem;
     line-height: 1.6;
+}
+
+.payment-status-row {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.payment-hold-note {
+    margin: 0;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--blush);
 }
 
 .payment-element-shell {
@@ -1757,6 +1770,122 @@ a:hover { color: var(--text-primary); }
     margin: 4px 0;
 }
 
+.account-type-radio-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 2px;
+}
+
+.account-type-radio-card {
+    position: relative;
+    display: block;
+    cursor: none;
+    min-width: 0;
+}
+
+.account-type-radio-card input[type="radio"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+    appearance: none;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.account-type-radio-ui {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 128px;
+    padding: 18px 18px 16px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+        rgba(255, 255, 255, 0.02);
+    color: var(--text-secondary);
+    transition: var(--transition);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.account-type-radio-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.account-type-indicator {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    border-radius: 999px;
+    border: 1.5px solid rgba(255, 255, 255, 0.24);
+    background: rgba(255, 255, 255, 0.03);
+    transition: var(--transition);
+}
+
+.account-type-radio-card:hover .account-type-radio-ui {
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+
+.account-type-radio-card input:checked + .account-type-radio-ui {
+    border-color: rgba(212, 112, 154, 0.56);
+    background:
+        linear-gradient(180deg, rgba(212, 112, 154, 0.22), rgba(212, 112, 154, 0.08)),
+        rgba(255, 255, 255, 0.03);
+    box-shadow:
+        0 14px 32px rgba(14, 0, 26, 0.32),
+        0 0 0 1px rgba(212, 112, 154, 0.16);
+    color: var(--text-primary);
+}
+
+.account-type-radio-card input:checked + .account-type-radio-ui .account-type-indicator {
+    border-color: rgba(212, 112, 154, 0.75);
+    background:
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.94) 0 38%, transparent 40%),
+        linear-gradient(135deg, var(--accent), var(--pink));
+}
+
+.account-type-radio-card input:focus-visible + .account-type-radio-ui {
+    outline: 2px solid rgba(212, 112, 154, 0.7);
+    outline-offset: 3px;
+}
+
+.account-type-title {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: inherit;
+}
+
+.account-type-copy {
+    font-size: 0.84rem;
+    line-height: 1.65;
+    color: inherit;
+    max-width: 24ch;
+}
+
+.form-group.has-error .account-type-radio-ui {
+    border-color: rgba(248, 113, 113, 0.72);
+}
+
+.form-group.has-error .account-type-radio-group {
+    padding: 2px;
+    border-radius: 20px;
+    box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.08);
+}
+
 .auth-switch {
     font-size: 0.875rem;
     color: var(--text-muted);
@@ -2056,6 +2185,10 @@ a:hover { color: var(--text-primary); }
         padding: 56px 32px;
     }
 
+    .account-type-radio-group {
+        grid-template-columns: 1fr;
+    }
+
     .manager-grid {
         grid-template-columns: 1fr;
     }
@@ -2220,6 +2353,11 @@ a:hover { color: var(--text-primary); }
 
     .auth-right-inner {
         max-width: none;
+    }
+
+    .account-type-radio-ui {
+        min-height: auto;
+        padding: 16px;
     }
 
     .manager-header,

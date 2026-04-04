@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=20260404-ui-refresh-4">
 </head>
 <body>
 
@@ -66,7 +66,6 @@
             <div class="form-group">
                 <label>Total Price</label>
                 <p id="total-price" class="total-price">$0.00</p>
-                <p id="hold-timer" class="event-aux hidden"></p>
             </div>
 
             <div id="purchase-error" class="error-msg hidden"></div>
@@ -93,9 +92,12 @@
                     <h2>Complete Payment</h2>
                     <p class="form-subtitle checkout-subtitle">Choose your payment method and confirm the booking while your reserved seats are still on hold.</p>
                 </div>
-                <span class="summary-pill">10 Min Hold</span>
+                <span class="summary-pill" id="payment-hold-pill">10 Min Hold</span>
             </div>
-            <p class="payment-note">Card and PayNow are payment methods below. The final action button completes the purchase.</p>
+            <div class="payment-status-row">
+                <p class="payment-note">Card and PayNow are payment methods below. The final action button completes the purchase.</p>
+                <p id="hold-timer" class="payment-hold-note hidden"></p>
+            </div>
             <div class="payment-element-shell">
                 <div id="payment-element"></div>
             </div>
@@ -108,8 +110,8 @@
     </main>
 
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="js/api.js"></script>
-    <script src="js/form-validation.js"></script>
+    <script src="js/api.js?v=20260404-ui-refresh-4"></script>
+    <script src="js/form-validation.js?v=20260404-ui-refresh-4"></script>
     <script>
         const {
             bindLiveValidation,
@@ -212,6 +214,7 @@
 
         function startHoldCountdown(expiresAt) {
             const label = document.getElementById("hold-timer");
+            const pill = document.getElementById("payment-hold-pill");
             clearInterval(holdTimerHandle);
             label.classList.remove("hidden");
 
@@ -220,6 +223,7 @@
                 if (remainingMs <= 0) {
                     clearInterval(holdTimerHandle);
                     label.textContent = "Seat hold expired. Reserve again to continue.";
+                    pill.textContent = "Hold Expired";
                     return;
                 }
 
@@ -227,6 +231,7 @@
                 const minutes = Math.floor(totalSeconds / 60);
                 const seconds = totalSeconds % 60;
                 label.textContent = `Seat hold expires in ${minutes}:${String(seconds).padStart(2, "0")}`;
+                pill.textContent = `${minutes}:${String(seconds).padStart(2, "0")} Hold`;
             }
 
             refresh();
@@ -268,25 +273,39 @@
                             boxShadow: "none"
                         },
                         ".Tab": {
-                            backgroundColor: "#f8f0ff",
-                            color: "#230040",
+                            backgroundColor: "#43205f",
+                            color: "#f8f0ff",
                             border: "1px solid rgba(255, 255, 255, 0.12)",
                             boxShadow: "none"
                         },
                         ".Tab:hover": {
-                            backgroundColor: "#ffffff"
+                            backgroundColor: "#51296f",
+                            color: "#ffffff"
                         },
                         ".Tab--selected": {
-                            backgroundColor: "#ffffff",
-                            color: "#1a0030",
-                            borderColor: "rgba(212, 112, 154, 0.65)",
-                            boxShadow: "0 0 0 3px rgba(212, 112, 154, 0.16)"
+                            backgroundColor: "#5b2578",
+                            color: "#ffffff",
+                            borderColor: "rgba(212, 112, 154, 0.72)",
+                            boxShadow: "0 0 0 3px rgba(212, 112, 154, 0.18)"
                         },
                         ".TabLabel": {
+                            color: "#f8f0ff",
                             fontWeight: "700"
                         },
+                        ".Tab--selected .TabLabel": {
+                            color: "#ffffff"
+                        },
+                        ".TabIcon": {
+                            color: "#f8f0ff"
+                        },
+                        ".Tab:hover .TabIcon": {
+                            color: "#ffffff"
+                        },
+                        ".Tab--selected .TabIcon": {
+                            color: "#ffffff"
+                        },
                         ".Label": {
-                            color: "#d9bee7",
+                            color: "#e8d8f2",
                             fontWeight: "600"
                         },
                         ".Input": {
@@ -304,6 +323,13 @@
                             color: "#230040",
                             border: "1px solid rgba(35, 0, 64, 0.12)",
                             boxShadow: "none"
+                        },
+                        ".DropdownItem": {
+                            color: "#230040"
+                        },
+                        ".CodeInput": {
+                            backgroundColor: "#fffdfd",
+                            color: "#230040"
                         }
                     }
                 }

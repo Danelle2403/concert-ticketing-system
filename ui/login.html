@@ -7,10 +7,167 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=20260404-ui-refresh-2">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body.auth-page {
+            cursor: auto;
+        }
+
+        body.auth-page a,
+        body.auth-page button,
+        body.auth-page label,
+        body.auth-page select,
+        body.auth-page .account-type-radio-card,
+        body.auth-page .auth-tab,
+        body.auth-page .auth-switch-btn,
+        body.auth-page .btn-primary,
+        body.auth-page .btn-back {
+            cursor: pointer;
+        }
+
+        body.auth-page input,
+        body.auth-page textarea {
+            cursor: text;
+        }
+
+        .auth-form-wrap .form-group > label {
+            display: block;
+        }
+
+        .auth-form-wrap .account-type-radio-group {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 2px;
+        }
+
+        .auth-form-wrap .account-type-radio-card {
+            position: relative;
+            display: block;
+            min-width: 0;
+            cursor: pointer;
+        }
+
+        .auth-form-wrap .account-type-radio-card input[type="radio"] {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            opacity: 0;
+            pointer-events: none;
+            appearance: none;
+            clip-path: inset(50%);
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .auth-form-wrap .account-type-radio-ui {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 128px;
+            padding: 18px 18px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 18px;
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+                rgba(255, 255, 255, 0.02);
+            color: #cdb6d8;
+            transition: 180ms ease;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        .auth-form-wrap .account-type-radio-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .auth-form-wrap .account-type-title {
+            display: block;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            color: inherit;
+        }
+
+        .auth-form-wrap .account-type-copy {
+            display: block;
+            max-width: 24ch;
+            font-size: 0.84rem;
+            line-height: 1.65;
+            color: inherit;
+        }
+
+        .auth-form-wrap .account-type-indicator {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            margin-top: 2px;
+            border-radius: 999px;
+            border: 1.5px solid rgba(255, 255, 255, 0.24);
+            background: rgba(255, 255, 255, 0.03);
+            transition: 180ms ease;
+        }
+
+        .auth-form-wrap .account-type-radio-card:hover .account-type-radio-ui {
+            border-color: rgba(255, 255, 255, 0.2);
+            color: #f6eef8;
+            transform: translateY(-1px);
+        }
+
+        .auth-form-wrap .account-type-radio-card input[type="radio"]:checked + .account-type-radio-ui {
+            border-color: rgba(212, 112, 154, 0.56);
+            background:
+                linear-gradient(180deg, rgba(212, 112, 154, 0.22), rgba(212, 112, 154, 0.08)),
+                rgba(255, 255, 255, 0.03);
+            box-shadow:
+                0 14px 32px rgba(14, 0, 26, 0.32),
+                0 0 0 1px rgba(212, 112, 154, 0.16);
+            color: #fff7fb;
+        }
+
+        .auth-form-wrap .account-type-radio-card input[type="radio"]:checked + .account-type-radio-ui .account-type-indicator {
+            border-color: rgba(212, 112, 154, 0.75);
+            background:
+                radial-gradient(circle at center, rgba(255, 255, 255, 0.94) 0 38%, transparent 40%),
+                linear-gradient(135deg, #8b3d9f, #d4709a);
+        }
+
+        .auth-form-wrap .account-type-radio-card input[type="radio"]:focus-visible + .account-type-radio-ui {
+            outline: 2px solid rgba(212, 112, 154, 0.72);
+            outline-offset: 3px;
+        }
+
+        .auth-form-wrap .form-group.has-error .account-type-radio-ui {
+            border-color: rgba(248, 113, 113, 0.72);
+        }
+
+        .auth-form-wrap .form-group.has-error .account-type-radio-group {
+            padding: 2px;
+            border-radius: 20px;
+            box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.08);
+        }
+
+        @media (max-width: 1100px) {
+            .auth-form-wrap .account-type-radio-group {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .auth-form-wrap .account-type-radio-ui {
+                min-height: auto;
+                padding: 16px;
+            }
+        }
+    </style>
 </head>
-<body>
+<body class="auth-page">
 
     <!-- NAVBAR -->
     <nav class="navbar">
@@ -130,11 +287,30 @@
                             <input type="password" id="reg-password-confirm" placeholder="Re-enter your password" autocomplete="new-password">
                         </div>
                         <div class="form-group">
-                            <label for="reg-role">I am a</label>
-                            <select id="reg-role">
-                                <option value="fan">Fan</option>
-                                <option value="manager">Event Manager</option>
-                            </select>
+                            <label>Account Type</label>
+                            <div class="account-type-radio-group" id="reg-role-group" role="radiogroup" aria-label="Account type">
+                                <label class="account-type-radio-card">
+                                    <input type="radio" name="reg-role" value="fan" checked>
+                                    <span class="account-type-radio-ui">
+                                        <span class="account-type-radio-head">
+                                            <span class="account-type-title">Fan</span>
+                                            <span class="account-type-indicator" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="account-type-copy">Buy tickets and manage your bookings.</span>
+                                    </span>
+                                </label>
+                                <label class="account-type-radio-card">
+                                    <input type="radio" name="reg-role" value="manager">
+                                    <span class="account-type-radio-ui">
+                                        <span class="account-type-radio-head">
+                                            <span class="account-type-title">Event Manager</span>
+                                            <span class="account-type-indicator" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="account-type-copy">Create events, edit details, and manage sales.</span>
+                                    </span>
+                                </label>
+                            </div>
+                            <p class="helper-text">Choose how you want to use Concert Hub.</p>
                         </div>
                         <div id="register-error" class="error-msg hidden">
                             Registration failed. Please try again.
@@ -154,8 +330,8 @@
         </div>
     </main>
 
-    <script src="js/api.js"></script>
-    <script src="js/form-validation.js"></script>
+    <script src="js/api.js?v=20260404-ui-refresh-2"></script>
+    <script src="js/form-validation.js?v=20260404-ui-refresh-2"></script>
     <script>
         const { bindLiveValidation, clearErrors, validateEmail, validateRequired, setFieldError, focusFirstError } = window.formValidation;
         bindLiveValidation(document);
@@ -172,24 +348,46 @@
         }
 
         function switchTab(tab) {
-            // Show/hide panels
+            const loginPanel = document.getElementById("panel-login");
+            const registerPanel = document.getElementById("panel-register");
+
             if (tab === 'login') {
-                document.getElementById("panel-login").style.display = "flex";
-                document.getElementById("panel-register").style.display = "none";
+                loginPanel.classList.remove("hidden");
+                registerPanel.classList.add("hidden");
             } else {
-                document.getElementById("panel-login").style.display = "none";
-                document.getElementById("panel-register").style.display = "flex";
+                loginPanel.classList.add("hidden");
+                registerPanel.classList.remove("hidden");
             }
 
-            clearErrors(document.getElementById("panel-login"));
-            clearErrors(document.getElementById("panel-register"));
+            clearErrors(loginPanel);
+            clearErrors(registerPanel);
             document.getElementById("login-error").classList.add("hidden");
             document.getElementById("register-error").classList.add("hidden");
             document.getElementById("register-success").classList.add("hidden");
 
-            // Update tab styles
-            document.getElementById("tab-login").classList.toggle("active", tab === "login");
-            document.getElementById("tab-register").classList.toggle("active", tab === "register");
+            const loginTab = document.getElementById("tab-login");
+            const registerTab = document.getElementById("tab-register");
+            loginTab.classList.toggle("active", tab === "login");
+            registerTab.classList.toggle("active", tab === "register");
+            loginTab.setAttribute("aria-selected", tab === "login" ? "true" : "false");
+            registerTab.setAttribute("aria-selected", tab === "register" ? "true" : "false");
+        }
+
+        function getSelectedRegisterRoleField() {
+            return document.querySelector('input[name="reg-role"]:checked');
+        }
+
+        function validateRegisterRole() {
+            const selectedRoleField = getSelectedRegisterRoleField();
+            const roleGroup = document.getElementById("reg-role-group");
+            roleGroup.classList.remove("has-error");
+
+            if (selectedRoleField) {
+                return true;
+            }
+
+            roleGroup.classList.add("has-error");
+            return !setFieldError(roleGroup.querySelector('input[name="reg-role"]'), "Select whether you are a fan or event manager.");
         }
 
         function setButtonBusy(button, isBusy, idleLabel, busyLabel) {
@@ -251,12 +449,12 @@
             const email = document.getElementById("reg-email").value.trim().toLowerCase();
             const password = document.getElementById("reg-password").value;
             const passwordConfirm = document.getElementById("reg-password-confirm").value;
-            const role = document.getElementById("reg-role").value;
             const nameField = document.getElementById("reg-name");
             const emailField = document.getElementById("reg-email");
             const passwordField = document.getElementById("reg-password");
             const passwordConfirmField = document.getElementById("reg-password-confirm");
-            const roleField = document.getElementById("reg-role");
+            const roleField = getSelectedRegisterRoleField();
+            const role = roleField?.value || "";
 
             let isValid = true;
             isValid = validateRequired(nameField, "Enter your full name.") && isValid;
@@ -266,7 +464,7 @@
                 isValid = false;
                 setFieldError(passwordConfirmField, "Passwords do not match.");
             }
-            isValid = validateRequired(roleField, "Select whether you are a fan or event manager.") && isValid;
+            isValid = validateRegisterRole() && isValid;
 
             if (!isValid) {
                 focusFirstError(panel);
