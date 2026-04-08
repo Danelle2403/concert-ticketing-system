@@ -1,7 +1,7 @@
 const API_BASE = "http://localhost:8000";
-const USER_API_BASE = "http://localhost:5001";
-const EVENT_API_BASE = "http://localhost:5003";
-const INVENTORY_API_BASE = "http://localhost:5004";
+const USER_API_BASE = API_BASE;
+const EVENT_API_BASE = API_BASE;
+const INVENTORY_API_BASE = API_BASE;
 
 function buildUrl(path, query = {}) {
     return buildAbsoluteUrl(API_BASE, path, query);
