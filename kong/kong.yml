@@ -209,6 +209,37 @@ services:
               claims_to_verify:
                 - exp
               run_on_preflight: false
+      - name: manager-location-routes
+        paths:
+          - /manager/locations
+        methods:
+          - GET
+          - POST
+          - OPTIONS
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - http://localhost:8080
+              methods:
+                - GET
+                - POST
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+              credentials: true
+              max_age: 3600
+          - name: jwt
+            config:
+              header_names:
+                - authorization
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+              run_on_preflight: false
       - name: manager-event-alias-routes
         paths:
           - /events

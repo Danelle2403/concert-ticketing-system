@@ -1932,6 +1932,61 @@ a:hover { color: var(--text-primary); }
     color: var(--text-muted);
 }
 
+.location-picker {
+    position: relative;
+}
+
+.location-status-error {
+    color: #fca5a5;
+}
+
+.location-suggestions {
+    position: absolute;
+    top: calc(100% - 2px);
+    left: 0;
+    right: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    box-shadow: 0 14px 28px rgba(2, 6, 23, 0.28);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.location-suggestion-item {
+    width: 100%;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+    padding: 10px 12px;
+    font-family: 'Space Grotesk', sans-serif;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    cursor: pointer;
+}
+
+.location-suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.location-suggestion-item:hover,
+.location-suggestion-item:focus {
+    background: var(--accent-soft);
+    outline: none;
+}
+
+.location-suggestion-item span {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
 .stack-list {
     display: flex;
     flex-direction: column;

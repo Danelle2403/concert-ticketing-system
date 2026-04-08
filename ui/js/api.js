@@ -111,11 +111,53 @@ function logoutUser(redirectTo = "login.html") {
 }
 
 function formatVenueLabel(venue) {
+    if (typeof venue === "string") {
+        const text = venue.trim();
+        return text || "Venue TBC";
+    }
+
     if (!venue || typeof venue !== "object") {
         return "Venue TBC";
     }
 
-    return [venue.name, venue.city, venue.country].filter(Boolean).join(", ");
+    const primary = [
+        venue.name,
+        venue.placeName,
+        venue.formattedAddress,
+        venue.address
+    ]
+        .map((value) => String(value || "").trim())
+        .find(Boolean);
+
+    const locality = [venue.city, venue.country]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+
+    const label = [primary, ...locality].filter(Boolean).join(", ");
+    return label || "Venue TBC";
+}
+
+function normalizeVenueDetails(venue) {
+    if (typeof venue === "string") {
+        const text = venue.trim();
+        return {
+            name: text,
+            address: null,
+            city: null,
+            country: null
+        };
+    }
+
+    if (!venue || typeof venue !== "object") {
+        return {};
+    }
+
+    return {
+        name: venue.name || venue.placeName || venue.formattedAddress || venue.address || "",
+        address: venue.address || venue.formattedAddress || "",
+        city: venue.city || "",
+        country: venue.country || ""
+    };
 }
 
 function formatDateLabel(value, options = { day: "2-digit", month: "short", year: "numeric" }) {
@@ -170,7 +212,7 @@ function normalizeEventRecord(event) {
         date: formatDateLabel(event.startAt),
         dateTimeLabel: formatDateTimeRange(event.startAt, event.endAt),
         venue: formatVenueLabel(event.venue),
-        venueDetails: event.venue || {},
+        venueDetails: normalizeVenueDetails(event.venue),
         price: startingPrice,
         priceLabel: startingPrice !== null ? `From $${startingPrice}` : "Price TBC",
         pricingTiers,
@@ -249,6 +291,21 @@ async function getManagingEvents(userId) {
     }));
 
     return hydratedEvents;
+}
+
+async function searchManagerLocations(query) {
+    return apiRequest("/manager/locations", {
+        query: { q: String(query || "").trim() },
+        timeoutMs: 7000
+    });
+}
+
+async function validateManagerLocation(location) {
+    return apiRequest("/manager/locations/validate", {
+        method: "POST",
+        body: { location },
+        timeoutMs: 7000
+    });
 }
 
 // Event Service via Kong
