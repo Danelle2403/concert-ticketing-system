@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css?v=20260408-ticket-type-1">
+    <link rel="stylesheet" href="css/style.css?v=20260409-refund-link-1">
 </head>
 <body>
 
@@ -32,7 +32,7 @@
 
         <!-- NOT LOGGED IN STATE -->
         <div id="not-logged-in" class="hidden">
-            <p>Please <a href="login.html">login</a> to view your tickets.</p>
+            <p>Please <a href="login.html" id="login-link">login</a> to view your tickets.</p>
         </div>
 
         <!-- LOADING STATE -->
@@ -76,7 +76,7 @@
         </div>
     </div>
 
-    <script src="js/api.js?v=20260408-ticket-type-1"></script>
+    <script src="js/api.js?v=20260409-refund-link-1"></script>
     <script>
 
         // Check login
@@ -97,6 +97,13 @@
                 .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
                 .join(" ");
         }
+
+        function buildLoginRedirectHref() {
+            const currentPath = `${window.location.pathname.split("/").pop() || "request-refund.html"}${window.location.search || ""}`;
+            return `login.html?redirect=${encodeURIComponent(currentPath)}`;
+        }
+
+        document.getElementById("login-link").setAttribute("href", buildLoginRedirectHref());
 
         if (!user) {
             document.getElementById("loading").classList.add("hidden");
