@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css?v=20260408-osm-location-4">
+    <link rel="stylesheet" href="css/style.css?v=20260409-manual-venue-1">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -97,7 +97,10 @@
                                 <h3>Venue</h3>
                             </div>
                             <div class="form-group location-picker">
-                                <label for="create-location-input">Location</label>
+                                <div class="location-picker-head">
+                                    <label for="create-location-input">Location</label>
+                                    <button type="button" id="create-manual-toggle" class="btn-secondary location-mode-toggle">Enter Venue Manually</button>
+                                </div>
                                 <input type="text" id="create-location-input" placeholder="Search by venue, address, or postal code" autocomplete="off" required>
                                 <div id="create-location-suggestions" class="location-suggestions hidden" role="listbox" aria-label="Location suggestions"></div>
                                 <p id="create-location-status" class="helper-text">Start typing to search real venues and addresses.</p>
@@ -105,19 +108,19 @@
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label for="create-venue-name">Venue Name</label>
-                                    <input type="text" id="create-venue-name" placeholder="Auto-filled from location" readonly>
+                                    <input type="text" id="create-venue-name" placeholder="Singapore Indoor Stadium" readonly>
                                 </div>
                                 <div class="form-group">
                                     <label for="create-venue-address">Address</label>
-                                    <input type="text" id="create-venue-address" placeholder="Auto-filled from location" readonly>
+                                    <input type="text" id="create-venue-address" placeholder="2 Stadium Walk" readonly>
                                 </div>
                                 <div class="form-group">
                                     <label for="create-venue-city">City</label>
-                                    <input type="text" id="create-venue-city" placeholder="Auto-filled from location" readonly>
+                                    <input type="text" id="create-venue-city" placeholder="Singapore" readonly>
                                 </div>
                                 <div class="form-group">
                                     <label for="create-venue-country">Country</label>
-                                    <input type="text" id="create-venue-country" placeholder="Auto-filled from location" readonly>
+                                    <input type="text" id="create-venue-country" placeholder="Singapore" readonly>
                                 </div>
                             </div>
                         </div>
@@ -206,7 +209,10 @@
             </div>
 
             <div class="form-group location-picker">
-                <label for="edit-location-input">Location</label>
+                <div class="location-picker-head">
+                    <label for="edit-location-input">Location</label>
+                    <button type="button" id="edit-manual-toggle" class="btn-secondary location-mode-toggle">Enter Venue Manually</button>
+                </div>
                 <input type="text" id="edit-location-input" placeholder="Search by venue, address, or postal code" autocomplete="off" required>
                 <div id="edit-location-suggestions" class="location-suggestions hidden" role="listbox" aria-label="Location suggestions"></div>
                 <p id="edit-location-status" class="helper-text">Search and select a valid location to update the venue.</p>
@@ -215,19 +221,19 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label for="edit-venue-name">Venue Name</label>
-                    <input type="text" id="edit-venue-name" readonly>
+                    <input type="text" id="edit-venue-name" placeholder="Singapore Indoor Stadium" readonly>
                 </div>
                 <div class="form-group">
                     <label for="edit-venue-address">Address</label>
-                    <input type="text" id="edit-venue-address" readonly>
+                    <input type="text" id="edit-venue-address" placeholder="2 Stadium Walk" readonly>
                 </div>
                 <div class="form-group">
                     <label for="edit-venue-city">City</label>
-                    <input type="text" id="edit-venue-city" readonly>
+                    <input type="text" id="edit-venue-city" placeholder="Singapore" readonly>
                 </div>
                 <div class="form-group">
                     <label for="edit-venue-country">Country</label>
-                    <input type="text" id="edit-venue-country" readonly>
+                    <input type="text" id="edit-venue-country" placeholder="Singapore" readonly>
                 </div>
             </div>
 
@@ -297,6 +303,8 @@
         let editLocationRequestId = 0;
         let editLocationDebounce = null;
         let editLocationNeedsSelection = false;
+        let createManualVenueMode = false;
+        let editManualVenueMode = false;
 
         const defaultPricingTiers = [
             { code: "VIP", name: "VIP", price: 188, currency: "SGD" },
@@ -325,11 +333,41 @@
                 input: document.getElementById("create-location-input"),
                 suggestions: document.getElementById("create-location-suggestions"),
                 status: document.getElementById("create-location-status"),
+                toggle: document.getElementById("create-manual-toggle"),
                 venueName: document.getElementById("create-venue-name"),
                 venueAddress: document.getElementById("create-venue-address"),
                 venueCity: document.getElementById("create-venue-city"),
                 venueCountry: document.getElementById("create-venue-country")
             };
+        }
+
+        function setVenueFieldsReadOnly(elements, isReadOnly) {
+            elements.venueName.readOnly = isReadOnly;
+            elements.venueAddress.readOnly = isReadOnly;
+            elements.venueCity.readOnly = isReadOnly;
+            elements.venueCountry.readOnly = isReadOnly;
+        }
+
+        function setCreateVenueMode(isManual) {
+            createManualVenueMode = isManual;
+            const elements = createLocationElements();
+            elements.toggle.textContent = isManual ? "Use Location Search" : "Enter Venue Manually";
+            elements.toggle.classList.toggle("is-active", isManual);
+            elements.input.disabled = isManual;
+            if (isManual) {
+                createLocationSelection = null;
+                createLocationSuggestions = [];
+                elements.input.value = "";
+                hideCreateLocationSuggestions();
+                clearFieldError(elements.input);
+                setVenueFieldsReadOnly(elements, false);
+                setCreateLocationStatus("Manual venue entry is active. Search is optional.");
+                return;
+            }
+
+            setVenueFieldsReadOnly(elements, true);
+            hideCreateLocationSuggestions();
+            setCreateLocationStatus("Start typing to search real venues and addresses.");
         }
 
         function normalizeLocationSuggestion(rawSuggestion) {
@@ -441,7 +479,7 @@
                         .catch((error) => {
                             resetCreateLocationFields(false);
                             setCreateLocationStatus(
-                                error.message || "Location validation failed. Select a valid suggestion.",
+                                error.message || "Location validation failed. Select a valid suggestion or switch to manual venue entry.",
                                 true
                             );
                         });
@@ -489,13 +527,16 @@
                     createLocationSuggestions = [];
                     hideCreateLocationSuggestions();
                     setCreateLocationStatus(
-                        error.message || "Location search failed. Try again in a moment.",
+                        error.message || "Location search failed. Try again in a moment or switch to manual venue entry.",
                         true
                     );
                 });
         }
 
         function onCreateLocationInput() {
+            if (createManualVenueMode) {
+                return;
+            }
             if (createLocationSelection) {
                 resetCreateLocationFields(false);
             }
@@ -510,7 +551,12 @@
         }
 
         function validateCreateLocationSelection() {
-            const { input } = createLocationElements();
+            const { input, venueName } = createLocationElements();
+            if (createManualVenueMode) {
+                clearFieldError(input);
+                return validateRequired(venueName, "Enter the venue name.");
+            }
+
             if (!validateRequired(input, "Search and select a valid location.")) {
                 return false;
             }
@@ -533,11 +579,39 @@
                 input: document.getElementById("edit-location-input"),
                 suggestions: document.getElementById("edit-location-suggestions"),
                 status: document.getElementById("edit-location-status"),
+                toggle: document.getElementById("edit-manual-toggle"),
                 venueName: document.getElementById("edit-venue-name"),
                 venueAddress: document.getElementById("edit-venue-address"),
                 venueCity: document.getElementById("edit-venue-city"),
                 venueCountry: document.getElementById("edit-venue-country")
             };
+        }
+
+        function setEditVenueMode(isManual) {
+            editManualVenueMode = isManual;
+            const elements = editLocationElements();
+            elements.toggle.textContent = isManual ? "Use Location Search" : "Enter Venue Manually";
+            elements.toggle.classList.toggle("is-active", isManual);
+            elements.input.disabled = isManual;
+            if (isManual) {
+                editLocationSelection = null;
+                editLocationNeedsSelection = false;
+                editLocationSuggestions = [];
+                elements.input.value = "";
+                hideEditLocationSuggestions();
+                clearFieldError(elements.input);
+                setVenueFieldsReadOnly(elements, false);
+                setEditLocationStatus("Manual venue entry is active. Search is optional.");
+                return;
+            }
+
+            setVenueFieldsReadOnly(elements, true);
+            hideEditLocationSuggestions();
+            if (elements.input.value.trim()) {
+                setEditLocationStatus("Current location loaded. Search and select if you need to change it.");
+            } else {
+                setEditLocationStatus("Search and select a valid location to update the venue.");
+            }
         }
 
         function setEditLocationStatus(message, isError = false) {
@@ -632,7 +706,7 @@
                             editLocationSelection = null;
                             editLocationNeedsSelection = true;
                             setEditLocationStatus(
-                                error.message || "Location validation failed. Select a valid suggestion.",
+                                error.message || "Location validation failed. Select a valid suggestion or switch to manual venue entry.",
                                 true
                             );
                         });
@@ -680,13 +754,16 @@
                     editLocationSuggestions = [];
                     hideEditLocationSuggestions();
                     setEditLocationStatus(
-                        error.message || "Location search failed. Try again in a moment.",
+                        error.message || "Location search failed. Try again in a moment or switch to manual venue entry.",
                         true
                     );
                 });
         }
 
         function onEditLocationInput() {
+            if (editManualVenueMode) {
+                return;
+            }
             if (editLocationSelection) {
                 editLocationSelection = null;
             }
@@ -735,6 +812,7 @@
                 : null;
             editLocationNeedsSelection = false;
             hideEditLocationSuggestions();
+            setEditVenueMode(false);
             if (currentLabel) {
                 setEditLocationStatus("Current location loaded. Search and select if you need to change it.");
             } else {
@@ -743,7 +821,12 @@
         }
 
         function validateEditLocationSelection() {
-            const { input } = editLocationElements();
+            const { input, venueName } = editLocationElements();
+            if (editManualVenueMode) {
+                clearFieldError(input);
+                return validateRequired(venueName, "Enter the venue name.");
+            }
+
             if (!validateRequired(input, "Search and select a valid location.")) {
                 return false;
             }
@@ -968,6 +1051,7 @@
             document.getElementById("pricing-tier-rows").innerHTML = "";
             document.getElementById("seat-section-rows").innerHTML = "";
             resetCreateLocationFields(true);
+            setCreateVenueMode(false);
 
             defaultPricingTiers.forEach((tier) => addPricingTierRow(tier));
             defaultSeatSections.forEach((section) => addSeatSectionRow(section));
@@ -1023,7 +1107,7 @@
                     city: venueCity,
                     country: venueCountry
                 },
-                locationMeta: selectedLocation ? {
+                locationMeta: !createManualVenueMode && selectedLocation ? {
                     provider: selectedLocation.provider,
                     sourceId: selectedLocation.sourceId,
                     latitude: selectedLocation.latitude,
@@ -1189,6 +1273,7 @@
             editingEventId = null;
             resetEditLocationFields(true, true);
             editLocationNeedsSelection = false;
+            setEditVenueMode(false);
             setEditLocationStatus("Search and select a valid location to update the venue.");
             clearErrors(document.getElementById("edit-modal"));
             hideMessages("edit");
@@ -1495,6 +1580,9 @@
         });
 
         const createLocationInput = document.getElementById("create-location-input");
+        document.getElementById("create-manual-toggle").addEventListener("click", () => {
+            setCreateVenueMode(!createManualVenueMode);
+        });
         createLocationInput.addEventListener("input", onCreateLocationInput);
         createLocationInput.addEventListener("focus", () => {
             if (createLocationSuggestions.length) {
@@ -1508,6 +1596,9 @@
         });
 
         const editLocationInput = document.getElementById("edit-location-input");
+        document.getElementById("edit-manual-toggle").addEventListener("click", () => {
+            setEditVenueMode(!editManualVenueMode);
+        });
         editLocationInput.addEventListener("input", onEditLocationInput);
         editLocationInput.addEventListener("focus", () => {
             if (editLocationSuggestions.length) {
@@ -1535,6 +1626,8 @@
             document.getElementById("nav-logout").classList.remove("hidden");
             document.getElementById("nav-user").textContent = managerUser.name;
             document.getElementById("manager-view").classList.remove("hidden");
+            setCreateVenueMode(false);
+            setEditVenueMode(false);
             resetCreateForm();
             loadManagedEvents();
         }

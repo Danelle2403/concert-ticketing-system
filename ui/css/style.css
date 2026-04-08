@@ -1950,6 +1950,25 @@ a:hover { color: var(--text-primary); }
     position: relative;
 }
 
+.location-picker-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.location-mode-toggle {
+    padding: 8px 12px;
+    font-size: 0.76rem;
+}
+
+.location-mode-toggle.is-active {
+    border-color: var(--border-hover);
+    background: var(--accent-soft);
+    color: var(--text-primary);
+}
+
 .location-status-error {
     color: #fca5a5;
 }
