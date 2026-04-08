@@ -140,7 +140,7 @@ def build_event_payload(data, apply_defaults=False):
     event_payload = {
         key: value
         for key, value in data.items()
-        if key not in {"managerId", "seatInventoryEventId"}
+        if key not in {"managerId", "seatInventoryEventId", "locationMeta"}
     }
 
     if apply_defaults:
@@ -237,6 +237,257 @@ def merge_event_configuration(current_event, event_payload):
     return merged_event
 
 
+def normalize_text(value):
+    normalized = str(value or "").strip()
+    return normalized or None
+
+
+def first_non_empty(*values):
+    for value in values:
+        normalized = normalize_text(value)
+        if normalized:
+            return normalized
+    return None
+
+
+def compose_address_line(street, house_number):
+    normalized_street = normalize_text(street)
+    normalized_house_number = normalize_text(house_number)
+    if normalized_street and normalized_house_number:
+        return f"{normalized_house_number} {normalized_street}"
+    return normalized_street or normalized_house_number
+
+
+def parse_photon_feature(feature):
+    if not isinstance(feature, dict):
+        return None
+
+    geometry = feature.get("geometry") or {}
+    coordinates = geometry.get("coordinates") or []
+    if len(coordinates) != 2:
+        return None
+
+    longitude_raw, latitude_raw = coordinates
+    try:
+        latitude = float(latitude_raw)
+        longitude = float(longitude_raw)
+    except (TypeError, ValueError):
+        return None
+
+    properties = feature.get("properties") or {}
+    city = first_non_empty(
+        properties.get("city"),
+        properties.get("town"),
+        properties.get("village"),
+        properties.get("municipality"),
+        properties.get("county"),
+    )
+    country = first_non_empty(properties.get("country"))
+    postcode = first_non_empty(properties.get("postcode"))
+    street_line = compose_address_line(
+        properties.get("street"),
+        properties.get("housenumber"),
+    )
+    place_name = first_non_empty(
+        properties.get("name"),
+        street_line,
+        postcode,
+    )
+    formatted_address = ", ".join(
+        part for part in [place_name, street_line, city, postcode, country] if part
+    )
+    if not formatted_address:
+        return None
+
+    source_id = None
+    osm_type = normalize_text(properties.get("osm_type"))
+    osm_id = normalize_text(properties.get("osm_id"))
+    if osm_type and osm_id:
+        source_id = f"{osm_type}:{osm_id}"
+
+    return {
+        "provider": "openstreetmap",
+        "placeName": place_name or formatted_address,
+        "formattedAddress": formatted_address,
+        "latitude": latitude,
+        "longitude": longitude,
+        "city": city,
+        "country": country,
+        "postcode": postcode,
+        "sourceId": source_id,
+    }
+
+
+def search_openstreet_locations(app, query):
+    q = str(query or "").strip()
+    if len(q) < 2:
+        return []
+
+    try:
+        response = requests.request(
+            "GET",
+            app.config["OPENSTREET_SEARCH_URL"],
+            params={"q": q, "limit": 8},
+            timeout=app.config["OPENSTREET_TIMEOUT_SECONDS"],
+            headers={
+                "Accept": "application/json",
+                "User-Agent": app.config["OPENSTREET_USER_AGENT"],
+            },
+        )
+    except requests.RequestException as error:
+        raise service_clients.ServiceError(
+            502,
+            "LOCATION_PROVIDER_UNAVAILABLE",
+            "Location suggestions are unavailable right now.",
+            {"error": str(error)},
+        ) from error
+
+    if response.status_code == 429:
+        raise service_clients.ServiceError(
+            429,
+            "LOCATION_PROVIDER_RATE_LIMITED",
+            "Location search is temporarily rate limited. Please try again shortly.",
+        )
+
+    if response.status_code != 200:
+        raise service_clients.ServiceError(
+            502,
+            "LOCATION_PROVIDER_ERROR",
+            "Location provider returned an unexpected response.",
+            {"statusCode": response.status_code, "raw": response.text},
+        )
+
+    try:
+        body = response.json()
+    except Exception as error:
+        raise service_clients.ServiceError(
+            502,
+            "LOCATION_PROVIDER_ERROR",
+            "Location provider returned invalid JSON.",
+            {"error": str(error)},
+        ) from error
+
+    features = body.get("features") or []
+    suggestions = []
+    for feature in features:
+        suggestion = parse_photon_feature(feature)
+        if suggestion:
+            suggestions.append(suggestion)
+
+    return suggestions
+
+
+def validate_openstreet_location(app, raw_location):
+    if not isinstance(raw_location, dict):
+        raise ValueError("location must be an object")
+
+    try:
+        latitude = float(raw_location.get("latitude"))
+        longitude = float(raw_location.get("longitude"))
+    except (TypeError, ValueError):
+        raise ValueError("location latitude and longitude are required")
+
+    if latitude < -90 or latitude > 90:
+        raise ValueError("location latitude is out of range")
+    if longitude < -180 or longitude > 180:
+        raise ValueError("location longitude is out of range")
+
+    try:
+        response = requests.request(
+            "GET",
+            app.config["OPENSTREET_REVERSE_URL"],
+            params={
+                "format": "jsonv2",
+                "lat": latitude,
+                "lon": longitude,
+                "addressdetails": 1,
+            },
+            timeout=app.config["OPENSTREET_TIMEOUT_SECONDS"],
+            headers={
+                "Accept": "application/json",
+                "User-Agent": app.config["OPENSTREET_USER_AGENT"],
+            },
+        )
+    except requests.RequestException as error:
+        raise service_clients.ServiceError(
+            502,
+            "LOCATION_PROVIDER_UNAVAILABLE",
+            "Location validation is unavailable right now.",
+            {"error": str(error)},
+        ) from error
+
+    if response.status_code == 429:
+        raise service_clients.ServiceError(
+            429,
+            "LOCATION_PROVIDER_RATE_LIMITED",
+            "Location validation is temporarily rate limited. Please try again shortly.",
+        )
+
+    if response.status_code != 200:
+        raise service_clients.ServiceError(
+            502,
+            "LOCATION_PROVIDER_ERROR",
+            "Location provider returned an unexpected validation response.",
+            {"statusCode": response.status_code, "raw": response.text},
+        )
+
+    try:
+        body = response.json()
+    except Exception as error:
+        raise service_clients.ServiceError(
+            502,
+            "LOCATION_PROVIDER_ERROR",
+            "Location provider returned invalid JSON.",
+            {"error": str(error)},
+        ) from error
+
+    formatted_address = normalize_text(body.get("display_name"))
+    if not formatted_address:
+        raise service_clients.ServiceError(
+            422,
+            "LOCATION_NOT_FOUND",
+            "Unable to validate this location.",
+            {"location": raw_location},
+        )
+
+    address = body.get("address") or {}
+    city = first_non_empty(
+        address.get("city"),
+        address.get("town"),
+        address.get("village"),
+        address.get("municipality"),
+        address.get("county"),
+    )
+    country = first_non_empty(address.get("country"))
+    postcode = first_non_empty(address.get("postcode"))
+    place_name = first_non_empty(
+        raw_location.get("placeName"),
+        body.get("name"),
+        address.get("attraction"),
+        address.get("road"),
+        formatted_address.split(",")[0],
+    )
+
+    source_id = first_non_empty(raw_location.get("sourceId"))
+    if not source_id:
+        osm_type = normalize_text(body.get("osm_type"))
+        osm_id = normalize_text(body.get("osm_id"))
+        if osm_type and osm_id:
+            source_id = f"{osm_type}:{osm_id}"
+
+    return {
+        "provider": "openstreetmap",
+        "placeName": place_name or formatted_address,
+        "formattedAddress": formatted_address,
+        "latitude": latitude,
+        "longitude": longitude,
+        "city": city,
+        "country": country,
+        "postcode": postcode,
+        "sourceId": source_id,
+    }
+
+
 def bootstrap_inventory_for_event(app, seat_inventory_event_id, inventory_seed_rows):
     timeout = app.config["REQUEST_TIMEOUT_SECONDS"]
     seat_inventory_url = app.config["SEAT_INVENTORY_URL"]
@@ -270,6 +521,15 @@ def create_app(test_config=None):
         EVENT_SERVICE_URL=os.environ.get("EVENT_SERVICE_URL", "http://localhost:5002"),
         SEAT_INVENTORY_URL=os.environ.get("SEAT_INVENTORY_URL", "http://localhost:5004"),
         REFUND_SERVICE_URL=os.environ.get("REFUND_SERVICE_URL", "http://refund-composite:5000"),
+        OPENSTREET_SEARCH_URL=os.environ.get("OPENSTREET_SEARCH_URL", "https://photon.komoot.io/api/"),
+        OPENSTREET_REVERSE_URL=os.environ.get(
+            "OPENSTREET_REVERSE_URL", "https://nominatim.openstreetmap.org/reverse"
+        ),
+        OPENSTREET_USER_AGENT=os.environ.get(
+            "OPENSTREET_USER_AGENT",
+            "concert-ticketing-system/1.0 (contact: support@concerthub.local)",
+        ),
+        OPENSTREET_TIMEOUT_SECONDS=int(os.environ.get("OPENSTREET_TIMEOUT_SECONDS", "6")),
         UI_BASE_URL=os.environ.get("UI_BASE_URL", "http://localhost:8080"),
         RABBITMQ_URL=os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/%2F"),
         NOTIFICATION_EXCHANGE=os.environ.get("NOTIFICATION_EXCHANGE", "concert.events"),
@@ -757,6 +1017,37 @@ def create_app(test_config=None):
     @app.route("/events/<event_id>/cancel", methods=["POST"])
     def cancel_event_alias(event_id):
         return handle_cancel_event(event_id)
+
+    @app.route("/manager/locations", methods=["GET"])
+    def search_locations():
+        query = str(request.args.get("q") or "").strip()
+        try:
+            authenticate_manager_request(
+                app.config["USER_SERVICE_URL"],
+                app.config["REQUEST_TIMEOUT_SECONDS"],
+            )
+            suggestions = search_openstreet_locations(app, query)
+            return build_success({"suggestions": suggestions})
+        except ValueError as error:
+            return build_error(400, "VALIDATION_ERROR", str(error))
+        except service_clients.ServiceError as error:
+            return build_error(error.status_code, error.code, error.message, error.payload)
+
+    @app.route("/manager/locations/validate", methods=["POST"])
+    def validate_location():
+        data = request.get_json(silent=True) or {}
+        candidate = data.get("location", data)
+        try:
+            authenticate_manager_request(
+                app.config["USER_SERVICE_URL"],
+                app.config["REQUEST_TIMEOUT_SECONDS"],
+            )
+            validated_location = validate_openstreet_location(app, candidate)
+            return build_success({"location": validated_location})
+        except ValueError as error:
+            return build_error(400, "VALIDATION_ERROR", str(error))
+        except service_clients.ServiceError as error:
+            return build_error(error.status_code, error.code, error.message, error.payload)
 
     @app.route("/manager/events", methods=["GET"])
     def list_manager_event_links():

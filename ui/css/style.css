@@ -1430,6 +1430,63 @@ a:hover { color: var(--text-primary); }
     min-width: 160px;
 }
 
+.ticket-qr-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.ticket-qr-frame {
+    width: 132px;
+    height: 132px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.ticket-qr-frame img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.ticket-qr-frame-inactive {
+    background: rgba(148, 163, 184, 0.12);
+}
+
+.ticket-qr-placeholder {
+    font-size: 0.78rem;
+    text-align: center;
+    color: #475569;
+}
+
+.ticket-qr-status,
+.ticket-hash-label {
+    margin: 0;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.ticket-hash-value {
+    display: block;
+    max-width: 132px;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
 /* ── STATUS BADGES ───────────────────────────────────────── */
 .ticket-status {
     display: inline-block;
@@ -1487,6 +1544,8 @@ a:hover { color: var(--text-primary); }
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 24px 0;
+    overflow-y: auto;
     z-index: 200;
     animation: fadeIn 0.2s ease;
 }
@@ -1502,10 +1561,13 @@ a:hover { color: var(--text-primary); }
     border-radius: var(--radius);
     padding: 36px;
     max-width: 480px;
+    max-height: calc(100dvh - 48px);
     width: 90%;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     animation: slideUp 0.3s ease;
 }
 
@@ -1526,7 +1588,16 @@ a:hover { color: var(--text-primary); }
     font-size: 0.95rem;
 }
 
-.modal-buttons { display: flex; gap: 12px; margin-top: 8px; }
+.modal-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(to top, var(--bg-card) 72%, rgba(26, 0, 48, 0));
+    padding-top: 10px;
+    z-index: 1;
+}
 
 .warning-text {
     font-size: 0.85rem;
@@ -1932,6 +2003,80 @@ a:hover { color: var(--text-primary); }
     color: var(--text-muted);
 }
 
+.location-picker {
+    position: relative;
+}
+
+.location-picker-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.location-mode-toggle {
+    padding: 8px 12px;
+    font-size: 0.76rem;
+}
+
+.location-mode-toggle.is-active {
+    border-color: var(--border-hover);
+    background: var(--accent-soft);
+    color: var(--text-primary);
+}
+
+.location-status-error {
+    color: #fca5a5;
+}
+
+.location-suggestions {
+    position: absolute;
+    top: calc(100% - 2px);
+    left: 0;
+    right: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    box-shadow: 0 14px 28px rgba(2, 6, 23, 0.28);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.location-suggestion-item {
+    width: 100%;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+    padding: 10px 12px;
+    font-family: 'Space Grotesk', sans-serif;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    cursor: pointer;
+}
+
+.location-suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.location-suggestion-item:hover,
+.location-suggestion-item:focus {
+    background: var(--accent-soft);
+    outline: none;
+}
+
+.location-suggestion-item span {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
 .stack-list {
     display: flex;
     flex-direction: column;
@@ -2091,6 +2236,17 @@ a:hover { color: var(--text-primary); }
     line-height: 1.6;
 }
 
+.manager-inventory-block {
+    margin-top: 6px;
+}
+
+.manager-inventory-line {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin: 0;
+}
+
 .manager-access-card {
     max-width: 520px;
 }
@@ -2176,6 +2332,10 @@ a:hover { color: var(--text-primary); }
 
     .ticket-actions {
         min-width: 0;
+        width: 100%;
+    }
+
+    .ticket-qr-block {
         width: 100%;
     }
 

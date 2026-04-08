@@ -803,3 +803,91 @@ def test_edit_and_cancel_manager_event_lifecycle(client, monkeypatch):
         "/refunds/event/evt-lifecycle"
     )
     assert cancel_response.get_json()["data"]["integration"]["refundFlow"]["status"] == "completed"
+
+
+def test_manager_location_search_returns_suggestions(client, monkeypatch):
+    test_client, _app = client
+
+    monkeypatch.setattr(
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
+    )
+    monkeypatch.setattr(
+        composite_app,
+        "search_openstreet_locations",
+        lambda _app, _query: [
+            {
+                "provider": "openstreetmap",
+                "placeName": "Singapore Indoor Stadium",
+                "formattedAddress": "2 Stadium Walk, Singapore 397691, Singapore",
+                "latitude": 1.3009,
+                "longitude": 103.8747,
+                "city": "Singapore",
+                "country": "Singapore",
+                "postcode": "397691",
+                "sourceId": "W:12345",
+            }
+        ],
+    )
+
+    response = test_client.get("/manager/locations?q=397691")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["data"]["suggestions"][0]["placeName"] == "Singapore Indoor Stadium"
+    assert payload["data"]["suggestions"][0]["provider"] == "openstreetmap"
+
+
+def test_manager_location_validate_returns_normalized_location(client, monkeypatch):
+    test_client, _app = client
+
+    monkeypatch.setattr(
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
+    )
+    monkeypatch.setattr(
+        composite_app,
+        "validate_openstreet_location",
+        lambda _app, _location: {
+            "provider": "openstreetmap",
+            "placeName": "Singapore Indoor Stadium",
+            "formattedAddress": "2 Stadium Walk, Singapore 397691, Singapore",
+            "latitude": 1.3009,
+            "longitude": 103.8747,
+            "city": "Singapore",
+            "country": "Singapore",
+            "postcode": "397691",
+            "sourceId": "W:12345",
+        },
+    )
+
+    response = test_client.post(
+        "/manager/locations/validate",
+        json={"location": {"latitude": 1.3009, "longitude": 103.8747}},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["data"]["location"]["city"] == "Singapore"
+    assert payload["data"]["location"]["sourceId"] == "W:12345"
+
+
+def test_manager_location_validate_requires_coordinates(client, monkeypatch):
+    test_client, _app = client
+
+    monkeypatch.setattr(
+        composite_app,
+        "authenticate_manager_request",
+        lambda *_args, **_kwargs: manager_user(2),
+    )
+
+    response = test_client.post(
+        "/manager/locations/validate",
+        json={"location": {"placeName": "No Coordinates"}},
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["error"]["code"] == "VALIDATION_ERROR"

@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css?v=20260404-manager-fixes-3">
+    <link rel="stylesheet" href="css/style.css?v=20260409-manual-venue-1">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -96,22 +96,31 @@
                             <div class="section-card-head">
                                 <h3>Venue</h3>
                             </div>
+                            <div class="form-group location-picker">
+                                <div class="location-picker-head">
+                                    <label for="create-location-input">Location</label>
+                                    <button type="button" id="create-manual-toggle" class="btn-secondary location-mode-toggle hidden">Enter Venue Manually</button>
+                                </div>
+                                <input type="text" id="create-location-input" placeholder="Search by venue, address, or postal code" autocomplete="off" required>
+                                <div id="create-location-suggestions" class="location-suggestions hidden" role="listbox" aria-label="Location suggestions"></div>
+                                <p id="create-location-status" class="helper-text">Start typing to search real venues and addresses.</p>
+                            </div>
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label for="create-venue-name">Venue Name</label>
-                                    <input type="text" id="create-venue-name" placeholder="Singapore Indoor Stadium" required>
+                                    <input type="text" id="create-venue-name" placeholder="Singapore Indoor Stadium" readonly>
                                 </div>
                                 <div class="form-group">
                                     <label for="create-venue-address">Address</label>
-                                    <input type="text" id="create-venue-address" placeholder="2 Stadium Walk">
+                                    <input type="text" id="create-venue-address" placeholder="2 Stadium Walk" readonly>
                                 </div>
                                 <div class="form-group">
                                     <label for="create-venue-city">City</label>
-                                    <input type="text" id="create-venue-city" placeholder="Singapore">
+                                    <input type="text" id="create-venue-city" placeholder="Singapore" readonly>
                                 </div>
                                 <div class="form-group">
                                     <label for="create-venue-country">Country</label>
-                                    <input type="text" id="create-venue-country" placeholder="Singapore">
+                                    <input type="text" id="create-venue-country" placeholder="Singapore" readonly>
                                 </div>
                             </div>
                         </div>
@@ -199,22 +208,32 @@
                 </div>
             </div>
 
+            <div class="form-group location-picker">
+                <div class="location-picker-head">
+                    <label for="edit-location-input">Location</label>
+                    <button type="button" id="edit-manual-toggle" class="btn-secondary location-mode-toggle hidden">Enter Venue Manually</button>
+                </div>
+                <input type="text" id="edit-location-input" placeholder="Search by venue, address, or postal code" autocomplete="off" required>
+                <div id="edit-location-suggestions" class="location-suggestions hidden" role="listbox" aria-label="Location suggestions"></div>
+                <p id="edit-location-status" class="helper-text">Search and select a valid location to update the venue.</p>
+            </div>
+
             <div class="form-grid">
                 <div class="form-group">
                     <label for="edit-venue-name">Venue Name</label>
-                    <input type="text" id="edit-venue-name">
+                    <input type="text" id="edit-venue-name" placeholder="Singapore Indoor Stadium" readonly>
                 </div>
                 <div class="form-group">
                     <label for="edit-venue-address">Address</label>
-                    <input type="text" id="edit-venue-address">
+                    <input type="text" id="edit-venue-address" placeholder="2 Stadium Walk" readonly>
                 </div>
                 <div class="form-group">
                     <label for="edit-venue-city">City</label>
-                    <input type="text" id="edit-venue-city">
+                    <input type="text" id="edit-venue-city" placeholder="Singapore" readonly>
                 </div>
                 <div class="form-group">
                     <label for="edit-venue-country">Country</label>
-                    <input type="text" id="edit-venue-country">
+                    <input type="text" id="edit-venue-country" placeholder="Singapore" readonly>
                 </div>
             </div>
 
@@ -253,12 +272,13 @@
         </div>
     </div>
 
-    <script src="js/api.js?v=20260405-ui-fixes-2"></script>
+    <script src="js/api.js?v=20260408-osm-location-3"></script>
     <script src="js/form-validation.js?v=20260404-manager-fixes-3"></script>
     <script>
         const {
             bindLiveValidation,
             clearErrors,
+            clearFieldError,
             focusFirstError,
             setFieldError,
             validateNumber,
@@ -272,6 +292,21 @@
         let editingEventId = null;
         let cancellingEventId = null;
         let cancellingEventTitle = "";
+        let managerInventoryByEvent = new Map();
+        let managerInventoryError = "";
+        let createLocationSelection = null;
+        let createLocationSuggestions = [];
+        let createLocationRequestId = 0;
+        let createLocationDebounce = null;
+        let editLocationSelection = null;
+        let editLocationSuggestions = [];
+        let editLocationRequestId = 0;
+        let editLocationDebounce = null;
+        let editLocationNeedsSelection = false;
+        let createManualVenueMode = false;
+        let editManualVenueMode = false;
+        let createManualVenueAvailable = false;
+        let editManualVenueAvailable = false;
 
         const defaultPricingTiers = [
             { code: "VIP", name: "VIP", price: 188, currency: "SGD" },
@@ -293,6 +328,616 @@
                 "\"": "&quot;",
                 "'": "&#39;"
             }[char]));
+        }
+
+        function createLocationElements() {
+            return {
+                input: document.getElementById("create-location-input"),
+                suggestions: document.getElementById("create-location-suggestions"),
+                status: document.getElementById("create-location-status"),
+                toggle: document.getElementById("create-manual-toggle"),
+                venueName: document.getElementById("create-venue-name"),
+                venueAddress: document.getElementById("create-venue-address"),
+                venueCity: document.getElementById("create-venue-city"),
+                venueCountry: document.getElementById("create-venue-country")
+            };
+        }
+
+        function setVenueFieldsReadOnly(elements, isReadOnly) {
+            elements.venueName.readOnly = isReadOnly;
+            elements.venueAddress.readOnly = isReadOnly;
+            elements.venueCity.readOnly = isReadOnly;
+            elements.venueCountry.readOnly = isReadOnly;
+        }
+
+        function setCreateManualVenueAvailability(isAvailable) {
+            createManualVenueAvailable = isAvailable;
+            createLocationElements().toggle.classList.toggle("hidden", !isAvailable);
+        }
+
+        function setCreateVenueMode(isManual) {
+            createManualVenueMode = isManual;
+            const elements = createLocationElements();
+            elements.toggle.textContent = isManual ? "Use Location Search" : "Enter Venue Manually";
+            elements.toggle.classList.toggle("is-active", isManual);
+            elements.toggle.classList.toggle("hidden", !createManualVenueAvailable && !isManual);
+            elements.input.disabled = isManual;
+            if (isManual) {
+                createLocationSelection = null;
+                createLocationSuggestions = [];
+                elements.input.value = "";
+                hideCreateLocationSuggestions();
+                clearFieldError(elements.input);
+                setVenueFieldsReadOnly(elements, false);
+                setCreateLocationStatus("Manual venue entry is active. Search is optional.");
+                return;
+            }
+
+            setVenueFieldsReadOnly(elements, true);
+            hideCreateLocationSuggestions();
+            if (!createManualVenueAvailable) {
+                elements.toggle.classList.add("hidden");
+            }
+            setCreateLocationStatus("Start typing to search real venues and addresses.");
+        }
+
+        function normalizeLocationSuggestion(rawSuggestion) {
+            if (!rawSuggestion || typeof rawSuggestion !== "object") {
+                return null;
+            }
+
+            const latitude = Number(rawSuggestion.latitude);
+            const longitude = Number(rawSuggestion.longitude);
+            const formattedAddress = String(rawSuggestion.formattedAddress || "").trim();
+            const placeName = String(rawSuggestion.placeName || "").trim();
+            if (!formattedAddress || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                return null;
+            }
+
+            return {
+                provider: String(rawSuggestion.provider || "openstreetmap"),
+                placeName: placeName || formattedAddress,
+                formattedAddress,
+                latitude,
+                longitude,
+                city: String(rawSuggestion.city || "").trim(),
+                country: String(rawSuggestion.country || "").trim(),
+                postcode: String(rawSuggestion.postcode || "").trim(),
+                sourceId: String(rawSuggestion.sourceId || "").trim()
+            };
+        }
+
+        function setCreateLocationStatus(message, isError = false) {
+            const { status } = createLocationElements();
+            status.textContent = message;
+            status.classList.toggle("location-status-error", isError);
+        }
+
+        function hideCreateLocationSuggestions() {
+            const { suggestions } = createLocationElements();
+            suggestions.classList.add("hidden");
+            suggestions.innerHTML = "";
+        }
+
+        function resetCreateLocationFields(clearInput = false) {
+            createLocationSelection = null;
+            createLocationSuggestions = [];
+            const elements = createLocationElements();
+            if (clearInput) {
+                elements.input.value = "";
+            }
+            elements.venueName.value = "";
+            elements.venueAddress.value = "";
+            elements.venueCity.value = "";
+            elements.venueCountry.value = "";
+            hideCreateLocationSuggestions();
+        }
+
+        function applyCreateLocationSelection(selection) {
+            createLocationSelection = selection;
+            const elements = createLocationElements();
+            elements.input.value = selection.formattedAddress;
+            clearFieldError(elements.input);
+            elements.venueName.value = selection.placeName || selection.formattedAddress;
+            elements.venueAddress.value = selection.formattedAddress;
+            elements.venueCity.value = selection.city || "";
+            elements.venueCountry.value = selection.country || "";
+            hideCreateLocationSuggestions();
+            setCreateLocationStatus("Location selected and validated.");
+        }
+
+        function renderCreateLocationSuggestions() {
+            const { suggestions } = createLocationElements();
+            if (!createLocationSuggestions.length) {
+                hideCreateLocationSuggestions();
+                return;
+            }
+
+            suggestions.innerHTML = createLocationSuggestions
+                .map((suggestion, index) => `
+                    <button
+                        type="button"
+                        class="location-suggestion-item"
+                        data-location-index="${index}"
+                    >
+                        <strong>${escapeHtml(suggestion.placeName)}</strong>
+                        <span>${escapeHtml(suggestion.formattedAddress)}</span>
+                    </button>
+                `)
+                .join("");
+            suggestions.classList.remove("hidden");
+
+            suggestions.querySelectorAll(".location-suggestion-item").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const index = Number(button.dataset.locationIndex);
+                    const selectedSuggestion = createLocationSuggestions[index];
+                    if (!selectedSuggestion) {
+                        return;
+                    }
+
+                    hideCreateLocationSuggestions();
+                    setCreateLocationStatus("Validating selected location...");
+
+                    validateManagerLocation(selectedSuggestion)
+                        .then((payload) => {
+                            const rawLocation = payload?.data?.location || payload?.location;
+                            const validated = normalizeLocationSuggestion(rawLocation);
+                            if (!validated) {
+                                throw new Error("Location validation returned incomplete data.");
+                            }
+                            setCreateManualVenueAvailability(false);
+                            applyCreateLocationSelection(validated);
+                        })
+                        .catch((error) => {
+                            resetCreateLocationFields(false);
+                            setCreateManualVenueAvailability(true);
+                            setCreateLocationStatus(
+                                error.message || "Location validation failed. Use manual venue entry for now.",
+                                true
+                            );
+                        });
+                });
+            });
+        }
+
+        function loadCreateLocationSuggestions(query) {
+            const searchValue = String(query || "").trim();
+            if (searchValue.length < 2) {
+                createLocationRequestId += 1;
+                createLocationSuggestions = [];
+                hideCreateLocationSuggestions();
+                setCreateLocationStatus("Type at least 2 characters to search locations.");
+                return;
+            }
+
+            const requestId = ++createLocationRequestId;
+            setCreateLocationStatus("Searching for locations...");
+
+            searchManagerLocations(searchValue)
+                .then((payload) => {
+                    if (requestId !== createLocationRequestId) {
+                        return;
+                    }
+
+                    const suggestions = (payload?.data?.suggestions || payload?.suggestions || [])
+                        .map(normalizeLocationSuggestion)
+                        .filter(Boolean);
+                    createLocationSuggestions = suggestions;
+                    if (!suggestions.length) {
+                        hideCreateLocationSuggestions();
+                        setCreateLocationStatus("No matching real-world locations found.", true);
+                        return;
+                    }
+
+                    setCreateManualVenueAvailability(false);
+                    renderCreateLocationSuggestions();
+                    setCreateLocationStatus("Select one location from the list.");
+                })
+                .catch((error) => {
+                    if (requestId !== createLocationRequestId) {
+                        return;
+                    }
+
+                    createLocationSuggestions = [];
+                    hideCreateLocationSuggestions();
+                    setCreateManualVenueAvailability(true);
+                    setCreateLocationStatus(
+                        error.message || "Location search failed. Use manual venue entry for now.",
+                        true
+                    );
+                });
+        }
+
+        function onCreateLocationInput() {
+            if (createManualVenueMode) {
+                return;
+            }
+            if (createLocationSelection) {
+                resetCreateLocationFields(false);
+            }
+
+            if (createLocationDebounce) {
+                window.clearTimeout(createLocationDebounce);
+            }
+            const query = createLocationElements().input.value;
+            createLocationDebounce = window.setTimeout(() => {
+                loadCreateLocationSuggestions(query);
+            }, 220);
+        }
+
+        function validateCreateLocationSelection() {
+            const { input, venueName } = createLocationElements();
+            if (createManualVenueMode) {
+                clearFieldError(input);
+                return validateRequired(venueName, "Enter the venue name.");
+            }
+
+            if (!validateRequired(input, "Search and select a valid location.")) {
+                return false;
+            }
+
+            if (!createLocationSelection) {
+                setFieldError(input, "Select a location from the suggestions before creating the event.");
+                return false;
+            }
+
+            if (!Number.isFinite(createLocationSelection.latitude) || !Number.isFinite(createLocationSelection.longitude)) {
+                setFieldError(input, "Selected location is invalid. Please choose a suggestion again.");
+                return false;
+            }
+
+            return true;
+        }
+
+        function editLocationElements() {
+            return {
+                input: document.getElementById("edit-location-input"),
+                suggestions: document.getElementById("edit-location-suggestions"),
+                status: document.getElementById("edit-location-status"),
+                toggle: document.getElementById("edit-manual-toggle"),
+                venueName: document.getElementById("edit-venue-name"),
+                venueAddress: document.getElementById("edit-venue-address"),
+                venueCity: document.getElementById("edit-venue-city"),
+                venueCountry: document.getElementById("edit-venue-country")
+            };
+        }
+
+        function setEditManualVenueAvailability(isAvailable) {
+            editManualVenueAvailable = isAvailable;
+            editLocationElements().toggle.classList.toggle("hidden", !isAvailable);
+        }
+
+        function setEditVenueMode(isManual) {
+            editManualVenueMode = isManual;
+            const elements = editLocationElements();
+            elements.toggle.textContent = isManual ? "Use Location Search" : "Enter Venue Manually";
+            elements.toggle.classList.toggle("is-active", isManual);
+            elements.toggle.classList.toggle("hidden", !editManualVenueAvailable && !isManual);
+            elements.input.disabled = isManual;
+            if (isManual) {
+                editLocationSelection = null;
+                editLocationNeedsSelection = false;
+                editLocationSuggestions = [];
+                elements.input.value = "";
+                hideEditLocationSuggestions();
+                clearFieldError(elements.input);
+                setVenueFieldsReadOnly(elements, false);
+                setEditLocationStatus("Manual venue entry is active. Search is optional.");
+                return;
+            }
+
+            setVenueFieldsReadOnly(elements, true);
+            hideEditLocationSuggestions();
+            if (!editManualVenueAvailable) {
+                elements.toggle.classList.add("hidden");
+            }
+            if (elements.input.value.trim()) {
+                setEditLocationStatus("Current location loaded. Search and select if you need to change it.");
+            } else {
+                setEditLocationStatus("Search and select a valid location to update the venue.");
+            }
+        }
+
+        function setEditLocationStatus(message, isError = false) {
+            const { status } = editLocationElements();
+            status.textContent = message;
+            status.classList.toggle("location-status-error", isError);
+        }
+
+        function hideEditLocationSuggestions() {
+            const { suggestions } = editLocationElements();
+            suggestions.classList.add("hidden");
+            suggestions.innerHTML = "";
+        }
+
+        function setEditVenueFieldsFromLocation(location) {
+            const elements = editLocationElements();
+            elements.venueName.value = String(location?.placeName || location?.name || "").trim();
+            elements.venueAddress.value = String(location?.formattedAddress || location?.address || "").trim();
+            elements.venueCity.value = String(location?.city || "").trim();
+            elements.venueCountry.value = String(location?.country || "").trim();
+        }
+
+        function resetEditLocationFields(clearInput = false, clearVenueFields = true) {
+            editLocationSelection = null;
+            editLocationSuggestions = [];
+            const elements = editLocationElements();
+            if (clearInput) {
+                elements.input.value = "";
+            }
+            if (clearVenueFields) {
+                elements.venueName.value = "";
+                elements.venueAddress.value = "";
+                elements.venueCity.value = "";
+                elements.venueCountry.value = "";
+            }
+            hideEditLocationSuggestions();
+        }
+
+        function applyEditLocationSelection(selection) {
+            editLocationSelection = selection;
+            editLocationNeedsSelection = false;
+            const elements = editLocationElements();
+            elements.input.value = selection.formattedAddress;
+            clearFieldError(elements.input);
+            setEditVenueFieldsFromLocation(selection);
+            hideEditLocationSuggestions();
+            setEditLocationStatus("Location selected and validated.");
+        }
+
+        function renderEditLocationSuggestions() {
+            const { suggestions } = editLocationElements();
+            if (!editLocationSuggestions.length) {
+                hideEditLocationSuggestions();
+                return;
+            }
+
+            suggestions.innerHTML = editLocationSuggestions
+                .map((suggestion, index) => `
+                    <button
+                        type="button"
+                        class="location-suggestion-item"
+                        data-edit-location-index="${index}"
+                    >
+                        <strong>${escapeHtml(suggestion.placeName)}</strong>
+                        <span>${escapeHtml(suggestion.formattedAddress)}</span>
+                    </button>
+                `)
+                .join("");
+            suggestions.classList.remove("hidden");
+
+            suggestions.querySelectorAll(".location-suggestion-item").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const index = Number(button.dataset.editLocationIndex);
+                    const selectedSuggestion = editLocationSuggestions[index];
+                    if (!selectedSuggestion) {
+                        return;
+                    }
+
+                    hideEditLocationSuggestions();
+                    setEditLocationStatus("Validating selected location...");
+
+                    validateManagerLocation(selectedSuggestion)
+                        .then((payload) => {
+                            const rawLocation = payload?.data?.location || payload?.location;
+                            const validated = normalizeLocationSuggestion(rawLocation);
+                            if (!validated) {
+                                throw new Error("Location validation returned incomplete data.");
+                            }
+                            setEditManualVenueAvailability(false);
+                            applyEditLocationSelection(validated);
+                        })
+                        .catch((error) => {
+                            editLocationSelection = null;
+                            editLocationNeedsSelection = true;
+                            setEditManualVenueAvailability(true);
+                            setEditLocationStatus(
+                                error.message || "Location validation failed. Use manual venue entry for now.",
+                                true
+                            );
+                        });
+                });
+            });
+        }
+
+        function loadEditLocationSuggestions(query) {
+            const searchValue = String(query || "").trim();
+            if (searchValue.length < 2) {
+                editLocationRequestId += 1;
+                editLocationSuggestions = [];
+                hideEditLocationSuggestions();
+                setEditLocationStatus("Type at least 2 characters to search locations.");
+                return;
+            }
+
+            const requestId = ++editLocationRequestId;
+            setEditLocationStatus("Searching for locations...");
+
+            searchManagerLocations(searchValue)
+                .then((payload) => {
+                    if (requestId !== editLocationRequestId) {
+                        return;
+                    }
+
+                    const suggestions = (payload?.data?.suggestions || payload?.suggestions || [])
+                        .map(normalizeLocationSuggestion)
+                        .filter(Boolean);
+                    editLocationSuggestions = suggestions;
+                    if (!suggestions.length) {
+                        hideEditLocationSuggestions();
+                        setEditLocationStatus("No matching real-world locations found.", true);
+                        return;
+                    }
+
+                    setEditManualVenueAvailability(false);
+                    renderEditLocationSuggestions();
+                    setEditLocationStatus("Select one location from the list.");
+                })
+                .catch((error) => {
+                    if (requestId !== editLocationRequestId) {
+                        return;
+                    }
+
+                    editLocationSuggestions = [];
+                    hideEditLocationSuggestions();
+                    setEditManualVenueAvailability(true);
+                    setEditLocationStatus(
+                        error.message || "Location search failed. Use manual venue entry for now.",
+                        true
+                    );
+                });
+        }
+
+        function onEditLocationInput() {
+            if (editManualVenueMode) {
+                return;
+            }
+            if (editLocationSelection) {
+                editLocationSelection = null;
+            }
+            editLocationNeedsSelection = true;
+            resetEditLocationFields(false, true);
+
+            if (editLocationDebounce) {
+                window.clearTimeout(editLocationDebounce);
+            }
+            const query = editLocationElements().input.value;
+            editLocationDebounce = window.setTimeout(() => {
+                loadEditLocationSuggestions(query);
+            }, 220);
+        }
+
+        function primeEditLocationFromEvent(event) {
+            const details = event?.venueDetails || {};
+            const formattedAddress = [
+                details.name,
+                details.address,
+                details.city,
+                details.country
+            ]
+                .map((value) => String(value || "").trim())
+                .filter(Boolean)
+                .join(", ");
+            const fallbackLabel = String(event?.venue || "").trim();
+            const currentLabel = formattedAddress || fallbackLabel || "";
+
+            const elements = editLocationElements();
+            elements.input.value = currentLabel;
+            setEditVenueFieldsFromLocation({
+                placeName: details.name || fallbackLabel || "",
+                formattedAddress: details.address || currentLabel || "",
+                city: details.city || "",
+                country: details.country || ""
+            });
+
+            editLocationSelection = currentLabel
+                ? {
+                    placeName: details.name || fallbackLabel || currentLabel,
+                    formattedAddress: details.address || currentLabel,
+                    city: details.city || "",
+                    country: details.country || ""
+                }
+                : null;
+            editLocationNeedsSelection = false;
+            hideEditLocationSuggestions();
+            setEditManualVenueAvailability(false);
+            setEditVenueMode(false);
+            if (currentLabel) {
+                setEditLocationStatus("Current location loaded. Search and select if you need to change it.");
+            } else {
+                setEditLocationStatus("Search and select a valid location to update the venue.");
+            }
+        }
+
+        function validateEditLocationSelection() {
+            const { input, venueName } = editLocationElements();
+            if (editManualVenueMode) {
+                clearFieldError(input);
+                return validateRequired(venueName, "Enter the venue name.");
+            }
+
+            if (!validateRequired(input, "Search and select a valid location.")) {
+                return false;
+            }
+
+            if (editLocationNeedsSelection && !editLocationSelection) {
+                setFieldError(input, "Select a location from the suggestions before saving.");
+                return false;
+            }
+
+            return true;
+        }
+
+        function normalizeEventIdKey(value) {
+            const text = String(value ?? "").trim();
+            if (!text) {
+                return "";
+            }
+            const prefixedMatch = /^con-(\d+)$/i.exec(text);
+            if (prefixedMatch) {
+                return String(Number(prefixedMatch[1]));
+            }
+            return text;
+        }
+
+        function normalizeSeatCategory(value) {
+            return String(value || "").trim().toUpperCase();
+        }
+
+        function buildManagerInventoryIndex(rows) {
+            const inventoryByEvent = new Map();
+            (rows || []).forEach((row) => {
+                const eventKey = normalizeEventIdKey(row?.eventId);
+                const seatCategory = normalizeSeatCategory(row?.seatCategory);
+                if (!eventKey || !seatCategory) {
+                    return;
+                }
+
+                if (!inventoryByEvent.has(eventKey)) {
+                    inventoryByEvent.set(eventKey, []);
+                }
+                inventoryByEvent.get(eventKey).push({
+                    seatCategory,
+                    totalSeats: Number(row.totalSeats),
+                    availableSeats: Number(row.availableSeats)
+                });
+            });
+
+            return inventoryByEvent;
+        }
+
+        function renderEventInventorySummary(event) {
+            if (managerInventoryError) {
+                return '<p class="event-aux">Ticket inventory is unavailable right now.</p>';
+            }
+
+            const eventKey = normalizeEventIdKey(event.id ?? event.eventId);
+            const inventoryRows = managerInventoryByEvent.get(eventKey) || [];
+            if (!inventoryRows.length) {
+                return '<p class="event-aux">Ticket inventory is not configured yet.</p>';
+            }
+
+            const inventoryMarkup = inventoryRows
+                .slice()
+                .sort((left, right) => left.seatCategory.localeCompare(right.seatCategory))
+                .map((row) => {
+                    const total = Number.isFinite(row.totalSeats) ? Math.max(0, row.totalSeats) : 0;
+                    const available = Number.isFinite(row.availableSeats) ? Math.max(0, row.availableSeats) : 0;
+                    const sold = Math.max(0, total - available);
+                    return `
+                        <p class="manager-inventory-line">
+                            <strong>${escapeHtml(row.seatCategory)}</strong>: ${available}/${total} left (${sold} sold)
+                        </p>
+                    `;
+                })
+                .join("");
+
+            return `
+                <div class="manager-inventory-block">
+                    <p class="event-aux"><strong>Seat Availability</strong></p>
+                    ${inventoryMarkup}
+                </div>
+            `;
         }
 
         function toDatetimeLocal(isoString) {
@@ -434,6 +1079,9 @@
             document.getElementById("create-event-form").reset();
             document.getElementById("pricing-tier-rows").innerHTML = "";
             document.getElementById("seat-section-rows").innerHTML = "";
+            resetCreateLocationFields(true);
+            setCreateManualVenueAvailability(false);
+            setCreateVenueMode(false);
 
             defaultPricingTiers.forEach((tier) => addPricingTierRow(tier));
             defaultSeatSections.forEach((section) => addSeatSectionRow(section));
@@ -447,6 +1095,7 @@
             document.getElementById("create-end-at").value = toDatetimeLocal(end.toISOString());
             document.getElementById("create-status").value = "DRAFT";
             document.getElementById("create-description").value = "";
+            setCreateLocationStatus("Start typing to search real venues and addresses.");
             clearErrors(document.getElementById("create-event-form"));
             hideMessages("create-event");
         }
@@ -470,6 +1119,11 @@
         }
 
         function buildCreatePayload() {
+            const selectedLocation = createLocationSelection;
+            const venueName = selectedLocation?.placeName || document.getElementById("create-venue-name").value.trim();
+            const venueAddress = selectedLocation?.formattedAddress || document.getElementById("create-venue-address").value.trim();
+            const venueCity = selectedLocation?.city || document.getElementById("create-venue-city").value.trim();
+            const venueCountry = selectedLocation?.country || document.getElementById("create-venue-country").value.trim();
             return {
                 managerId,
                 title: document.getElementById("create-title").value.trim(),
@@ -478,17 +1132,33 @@
                 endAt: toIsoString(document.getElementById("create-end-at").value),
                 status: document.getElementById("create-status").value,
                 venue: {
-                    name: document.getElementById("create-venue-name").value.trim(),
-                    address: document.getElementById("create-venue-address").value.trim(),
-                    city: document.getElementById("create-venue-city").value.trim(),
-                    country: document.getElementById("create-venue-country").value.trim()
+                    name: venueName,
+                    address: venueAddress,
+                    city: venueCity,
+                    country: venueCountry
                 },
+                locationMeta: !createManualVenueMode && selectedLocation ? {
+                    provider: selectedLocation.provider,
+                    sourceId: selectedLocation.sourceId,
+                    latitude: selectedLocation.latitude,
+                    longitude: selectedLocation.longitude,
+                    formattedAddress: selectedLocation.formattedAddress,
+                    placeName: selectedLocation.placeName,
+                    city: selectedLocation.city,
+                    country: selectedLocation.country,
+                    postcode: selectedLocation.postcode
+                } : null,
                 pricingTiers: readPricingTiers(),
                 seatSections: readSeatSections()
             };
         }
 
         function buildEditPayload() {
+            const selectedLocation = editLocationSelection;
+            const venueName = selectedLocation?.placeName || document.getElementById("edit-venue-name").value.trim();
+            const venueAddress = selectedLocation?.formattedAddress || document.getElementById("edit-venue-address").value.trim();
+            const venueCity = selectedLocation?.city || document.getElementById("edit-venue-city").value.trim();
+            const venueCountry = selectedLocation?.country || document.getElementById("edit-venue-country").value.trim();
             return {
                 managerId,
                 title: document.getElementById("edit-title").value.trim(),
@@ -497,10 +1167,10 @@
                 endAt: toIsoString(document.getElementById("edit-end-at").value),
                 status: document.getElementById("edit-status").value,
                 venue: {
-                    name: document.getElementById("edit-venue-name").value.trim(),
-                    address: document.getElementById("edit-venue-address").value.trim(),
-                    city: document.getElementById("edit-venue-city").value.trim(),
-                    country: document.getElementById("edit-venue-country").value.trim()
+                    name: venueName,
+                    address: venueAddress,
+                    city: venueCity,
+                    country: venueCountry
                 }
             };
         }
@@ -549,6 +1219,7 @@
                         <p class="event-aux">
                             ${event.pricingTiers.length} tier(s) · ${event.seatSections.length} section(s)
                         </p>
+                        ${renderEventInventorySummary(event)}
                     </div>
                     <div class="ticket-actions">
                         <button type="button" class="btn-primary js-edit-event">Edit Details</button>
@@ -586,6 +1257,14 @@
 
             try {
                 managedEvents = await getManagingEvents(managerId);
+                managerInventoryError = "";
+                try {
+                    const inventorySnapshot = await getInventorySnapshot();
+                    managerInventoryByEvent = buildManagerInventoryIndex(inventorySnapshot);
+                } catch (_inventoryError) {
+                    managerInventoryByEvent = new Map();
+                    managerInventoryError = "Ticket inventory is unavailable right now.";
+                }
                 loading.classList.add("hidden");
 
                 if (!managedEvents.length) {
@@ -614,10 +1293,7 @@
             document.getElementById("edit-start-at").value = toDatetimeLocal(event.startAt);
             document.getElementById("edit-end-at").value = toDatetimeLocal(event.endAt);
             document.getElementById("edit-status").value = event.statusLabel;
-            document.getElementById("edit-venue-name").value = event.venueDetails.name || "";
-            document.getElementById("edit-venue-address").value = event.venueDetails.address || "";
-            document.getElementById("edit-venue-city").value = event.venueDetails.city || "";
-            document.getElementById("edit-venue-country").value = event.venueDetails.country || "";
+            primeEditLocationFromEvent(event);
             clearErrors(document.getElementById("edit-modal"));
             hideMessages("edit");
             document.getElementById("edit-modal").classList.remove("hidden");
@@ -625,6 +1301,11 @@
 
         function closeEditModal() {
             editingEventId = null;
+            resetEditLocationFields(true, true);
+            editLocationNeedsSelection = false;
+            setEditManualVenueAvailability(false);
+            setEditVenueMode(false);
+            setEditLocationStatus("Search and select a valid location to update the venue.");
             clearErrors(document.getElementById("edit-modal"));
             hideMessages("edit");
             document.getElementById("edit-modal").classList.add("hidden");
@@ -783,12 +1464,11 @@
             const statusField = document.getElementById("create-status");
             const startField = document.getElementById("create-start-at");
             const endField = document.getElementById("create-end-at");
-            const venueNameField = document.getElementById("create-venue-name");
 
             let isValid = true;
             isValid = validateRequired(titleField, "Enter the event title.") && isValid;
             isValid = validateRequired(statusField, "Select whether the event is draft or published.") && isValid;
-            isValid = validateRequired(venueNameField, "Enter the venue name.") && isValid;
+            isValid = validateCreateLocationSelection() && isValid;
             isValid = validateDateRange(startField, endField) && isValid;
             isValid = validatePricingTierRows() && isValid;
             isValid = validateSeatSectionRows() && isValid;
@@ -810,12 +1490,11 @@
             const statusField = document.getElementById("edit-status");
             const startField = document.getElementById("edit-start-at");
             const endField = document.getElementById("edit-end-at");
-            const venueNameField = document.getElementById("edit-venue-name");
 
             let isValid = true;
             isValid = validateRequired(titleField, "Enter the event title.") && isValid;
             isValid = validateRequired(statusField, "Select whether the event is draft or published.") && isValid;
-            isValid = validateRequired(venueNameField, "Enter the venue name.") && isValid;
+            isValid = validateEditLocationSelection() && isValid;
             isValid = validateDateRange(startField, endField) && isValid;
 
             if (!isValid) {
@@ -931,6 +1610,45 @@
             }
         });
 
+        const createLocationInput = document.getElementById("create-location-input");
+        document.getElementById("create-manual-toggle").addEventListener("click", () => {
+            setCreateVenueMode(!createManualVenueMode);
+        });
+        createLocationInput.addEventListener("input", onCreateLocationInput);
+        createLocationInput.addEventListener("focus", () => {
+            if (createLocationSuggestions.length) {
+                renderCreateLocationSuggestions();
+            }
+        });
+        createLocationInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !document.getElementById("create-location-suggestions").classList.contains("hidden")) {
+                event.preventDefault();
+            }
+        });
+
+        const editLocationInput = document.getElementById("edit-location-input");
+        document.getElementById("edit-manual-toggle").addEventListener("click", () => {
+            setEditVenueMode(!editManualVenueMode);
+        });
+        editLocationInput.addEventListener("input", onEditLocationInput);
+        editLocationInput.addEventListener("focus", () => {
+            if (editLocationSuggestions.length) {
+                renderEditLocationSuggestions();
+            }
+        });
+        editLocationInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !document.getElementById("edit-location-suggestions").classList.contains("hidden")) {
+                event.preventDefault();
+            }
+        });
+
+        document.addEventListener("click", (event) => {
+            if (!event.target.closest(".location-picker")) {
+                hideCreateLocationSuggestions();
+                hideEditLocationSuggestions();
+            }
+        });
+
         if (!managerUser || managerUser.role !== "manager") {
             document.getElementById("access-denied").classList.remove("hidden");
         } else {
@@ -939,6 +1657,8 @@
             document.getElementById("nav-logout").classList.remove("hidden");
             document.getElementById("nav-user").textContent = managerUser.name;
             document.getElementById("manager-view").classList.remove("hidden");
+            setCreateVenueMode(false);
+            setEditVenueMode(false);
             resetCreateForm();
             loadManagedEvents();
         }

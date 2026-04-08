@@ -32,6 +32,7 @@ services:
     depends_on:
       - user-service
       - event-service
+      - seat-inventory
       - purchase-composite
       - refund-composite
       - edit-event-composite

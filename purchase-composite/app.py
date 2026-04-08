@@ -1451,8 +1451,11 @@ def purchase_status(purchaseId):
 
 @app.route("/purchase/ticket/<ticketId>", methods=["GET"])
 def ticket_lookup(ticketId):
+    auth_user = None
     if not has_internal_service_access():
-        return jsonify({"error": "Forbidden"}), 403
+        auth_user, error_response = require_authenticated_user()
+        if error_response:
+            return error_response
     ticketId = normalize_ticket_id(ticketId)
     conn = get_db()
     cur = conn.cursor()
@@ -1462,7 +1465,12 @@ def ticket_lookup(ticketId):
 
     if not row:
         return jsonify({"error": "Ticket mapping not found"}), 404
-    return jsonify(dict(row)), 200
+
+    payload = dict(row)
+    if auth_user and int(payload.get("userId") or 0) != int(auth_user["userId"]):
+        return jsonify({"error": "Forbidden"}), 403
+
+    return jsonify(payload), 200
 
 
 @app.route("/purchase/ticket/<ticketId>/status", methods=["POST"])

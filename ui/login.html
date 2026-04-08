@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css?v=20260404-ui-refresh-2">
+    <link rel="stylesheet" href="css/style.css?v=20260409-login-redirect-1">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body.auth-page {
@@ -330,11 +330,37 @@
         </div>
     </main>
 
-    <script src="js/api.js?v=20260405-ui-fixes-2"></script>
+    <script src="js/api.js?v=20260409-login-redirect-1"></script>
     <script src="js/form-validation.js?v=20260404-ui-refresh-2"></script>
     <script>
         const { bindLiveValidation, clearErrors, validateEmail, validateRequired, setFieldError, focusFirstError } = window.formValidation;
         bindLiveValidation(document);
+        const loginPageParams = new URLSearchParams(window.location.search);
+
+        function normalizeRedirectTarget(rawValue) {
+            const value = String(rawValue || "").trim();
+            if (!value) {
+                return null;
+            }
+            if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("//")) {
+                return null;
+            }
+            if (!/^[A-Za-z0-9._~!$&'()*+,;=:@/?%-]+$/.test(value)) {
+                return null;
+            }
+            if (!value.endsWith(".html") && !value.includes(".html?")) {
+                return null;
+            }
+            return value;
+        }
+
+        function getPostAuthRedirect(role) {
+            const redirect = normalizeRedirectTarget(loginPageParams.get("redirect"));
+            if (redirect) {
+                return redirect;
+            }
+            return role === "manager" ? "manage-event.html" : "index.html";
+        }
 
         function validatePasswordField(field, emptyMessage = "Enter your password.") {
             const value = String(field?.value || "");
@@ -421,7 +447,7 @@
                 const data = await loginUser({ email, password });
                 if (data && data.userId && data.authToken) {
                     storeUser(data);
-                    window.location.href = data.role === "manager" ? "manage-event.html" : "index.html";
+                    window.location.href = getPostAuthRedirect(data.role);
                 } else {
                     setFieldError(emailField, "We could not sign you in.");
                     document.getElementById("login-error").classList.remove("hidden");
@@ -478,7 +504,7 @@
                     storeUser(data);
                     document.getElementById("register-success").classList.remove("hidden");
                     setTimeout(() => {
-                        window.location.href = data.role === "manager" ? "manage-event.html" : "index.html";
+                        window.location.href = getPostAuthRedirect(data.role);
                     }, 1200);
                 } else {
                     document.getElementById("register-error").classList.remove("hidden");
