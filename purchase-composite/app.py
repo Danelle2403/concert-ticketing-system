@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -374,6 +375,34 @@ def send_purchase_confirmation_notification(payload):
     except Exception:
         return False
     return True
+
+
+def build_ticket_qr_detail(ticket_id, event_id, user_id, date, seat_category):
+    seed = json.dumps(
+        {
+            "ticketId": str(ticket_id or ""),
+            "eventId": str(event_id or ""),
+            "userId": str(user_id or ""),
+            "date": str(date or ""),
+            "seatCategory": str(seat_category or ""),
+        },
+        separators=(",", ":"),
+    )
+    ticket_hash = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+    qr_payload = json.dumps(
+        {
+            "ticketId": str(ticket_id or ""),
+            "eventId": str(event_id or ""),
+            "ticketHash": ticket_hash,
+        },
+        separators=(",", ":"),
+    )
+    return {
+        "ticketId": str(ticket_id or ""),
+        "seatCategory": str(seat_category or ""),
+        "ticketHash": ticket_hash,
+        "qrPayload": qr_payload,
+    }
 
 
 def issue_ticket(event_id):
@@ -1048,6 +1077,16 @@ def confirm_checkout_session():
 
         order_ids = [row["orderId"] for row in created_rows if row.get("orderId") is not None]
         ticket_ids = [row["ticketId"] for row in created_rows]
+        ticket_details = [
+            build_ticket_qr_detail(
+                ticket_id=row["ticketId"],
+                event_id=event_id,
+                user_id=checkout_session["userId"],
+                date=event_date_label(event),
+                seat_category=checkout_session["seatCategory"],
+            )
+            for row in created_rows
+        ]
 
         cur.execute(
             """
@@ -1135,7 +1174,9 @@ def confirm_checkout_session():
                     "venue": event_venue_label(event),
                     "date": event_date_label(event),
                 },
+                "seatCategory": checkout_session["seatCategory"],
                 "ticketIds": ticket_ids,
+                "ticketDetails": ticket_details,
                 "orderIds": order_ids,
             }
         )
@@ -1148,7 +1189,9 @@ def confirm_checkout_session():
                     "status": "SUCCESS",
                     "paymentIntentId": checkout_session["paymentIntentId"],
                     "paymentChargeId": latest_charge_id,
+                    "seatCategory": checkout_session["seatCategory"],
                     "tickets": ticket_ids,
+                    "ticketDetails": ticket_details,
                 }
             ),
             201,
@@ -1317,6 +1360,16 @@ def checkout():
         now = utc_now_iso()
         order_ids = [row["orderId"] for row in created_rows if row.get("orderId") is not None]
         ticket_ids = [row["ticketId"] for row in created_rows]
+        ticket_details = [
+            build_ticket_qr_detail(
+                ticket_id=row["ticketId"],
+                event_id=event_id,
+                user_id=user_id,
+                date=event_date_label(event),
+                seat_category=seat_category,
+            )
+            for row in created_rows
+        ]
 
         cur.execute(
             """
@@ -1365,6 +1418,26 @@ def checkout():
             )
 
         conn.commit()
+        send_purchase_confirmation_notification(
+            {
+                "purchaseId": purchase_id,
+                "paymentChargeId": payment_charge_id,
+                "amountPaid": amount_paid * quantity,
+                "currency": event_currency(event),
+                "buyerName": auth_user.get("name"),
+                "buyerEmail": auth_user.get("email"),
+                "event": {
+                    "eventId": event_id,
+                    "title": event_title(event),
+                    "venue": event_venue_label(event),
+                    "date": event_date_label(event),
+                },
+                "seatCategory": seat_category,
+                "ticketIds": ticket_ids,
+                "ticketDetails": ticket_details,
+                "orderIds": order_ids,
+            }
+        )
         return (
             jsonify(
                 {
@@ -1372,7 +1445,9 @@ def checkout():
                     "orderIds": order_ids,
                     "status": "SUCCESS",
                     "paymentChargeId": payment_charge_id,
+                    "seatCategory": seat_category,
                     "tickets": ticket_ids,
+                    "ticketDetails": ticket_details,
                 }
             ),
             201,

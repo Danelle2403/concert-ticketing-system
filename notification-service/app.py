@@ -5,10 +5,14 @@ import json
 import os
 import threading
 import time
+from urllib.parse import quote
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import pika
+try:
+    import pika
+except ModuleNotFoundError:  # pragma: no cover - exercised only in minimal test envs
+    pika = None
 import requests
 
 
@@ -83,6 +87,24 @@ def format_money(amount, currency):
         return "Amount unavailable"
     normalized_currency = str(currency or "sgd").upper()
     return f"{normalized_currency} {float(amount):.2f}"
+
+
+def format_seat_category(value):
+    tokens = [
+        token for token in str(value or "").replace("-", " ").replace("_", " ").split() if token
+    ]
+    if not tokens:
+        return "Not available"
+    return " ".join(token[:1].upper() + token[1:].lower() for token in tokens)
+
+
+def build_qr_image_url(qr_payload):
+    if not qr_payload:
+        return None
+    return (
+        "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="
+        f"{quote(str(qr_payload), safe='')}"
+    )
 
 
 def build_change_lines(changes):
@@ -164,6 +186,17 @@ def build_plain_text_body(payload, recipient_name):
     if notification_type == "purchase.confirmed":
         event_snapshot = payload.get("event") or {}
         ticket_ids = payload.get("ticketIds") or []
+        ticket_details = payload.get("ticketDetails") or []
+        detail_lines = []
+        for detail in ticket_details:
+            detail_lines.extend(
+                [
+                    f"Ticket ID: {detail.get('ticketId')}",
+                    f"Ticket Type: {format_seat_category(detail.get('seatCategory'))}",
+                    f"Ticket Hash: {detail.get('ticketHash') or 'Unavailable'}",
+                    "",
+                ]
+            )
         return "\n".join(
             [
                 f"Hi {recipient_name or 'there'},",
@@ -175,6 +208,7 @@ def build_plain_text_body(payload, recipient_name):
                 f"Amount paid: {format_money(payload.get('amountPaid'), payload.get('currency'))}",
                 f"Ticket IDs: {', '.join(ticket_ids) if ticket_ids else 'Pending'}",
                 "",
+                *detail_lines,
                 "Keep this email as your receipt and refer to My Tickets for your latest ticket status.",
                 "",
                 "Concert Hub",
@@ -306,7 +340,32 @@ def build_html_body(payload, recipient_name):
     if notification_type == "purchase.confirmed":
         event_snapshot = payload.get("event") or {}
         ticket_ids = payload.get("ticketIds") or []
+        ticket_details = payload.get("ticketDetails") or []
         ticket_list = "".join([f"<li>{html.escape(str(ticket_id))}</li>" for ticket_id in ticket_ids])
+        ticket_detail_cards = "".join(
+            [
+                """
+                <div style="margin:16px 0;padding:14px;border:1px solid #dbe4f0;border-radius:12px;">
+                  <p style="margin:0 0 8px;"><strong>Ticket ID:</strong> {ticket_id}</p>
+                  <p style="margin:0 0 8px;"><strong>Ticket Type:</strong> {seat_category}</p>
+                  <p style="margin:0 0 12px;"><strong>Ticket Hash:</strong> <code>{ticket_hash}</code></p>
+                  {qr_html}
+                </div>
+                """.format(
+                    ticket_id=html.escape(str(detail.get("ticketId") or "Pending")),
+                    seat_category=html.escape(format_seat_category(detail.get("seatCategory"))),
+                    ticket_hash=html.escape(str(detail.get("ticketHash") or "Unavailable")),
+                    qr_html=(
+                        f'<img src="{html.escape(build_qr_image_url(detail.get("qrPayload")))}" '
+                        'alt="Ticket QR code" width="180" height="180" '
+                        'style="display:block;border:1px solid #e5e7eb;border-radius:12px;background:#ffffff;padding:8px;">'
+                        if build_qr_image_url(detail.get("qrPayload"))
+                        else "<p style=\"margin:0;\">QR unavailable.</p>"
+                    ),
+                )
+                for detail in ticket_details
+            ]
+        )
         return f"""
         <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
           <p>Hi {html.escape(recipient_name or 'there')},</p>
@@ -319,6 +378,7 @@ def build_html_body(payload, recipient_name):
           </p>
           <p><strong>Ticket IDs:</strong></p>
           <ul>{ticket_list or "<li>Pending</li>"}</ul>
+          {ticket_detail_cards}
           <p>Keep this email as your receipt and refer to My Tickets for your latest ticket status.</p>
           <p>Concert Hub</p>
         </div>
@@ -622,6 +682,17 @@ def create_app(test_config=None):
             )
 
     def consume_forever():
+        if pika is None:
+            consumer_state["connected"] = False
+            consumer_state["lastError"] = "pika is not installed"
+            log_json(
+                {
+                    "service": "notification-service",
+                    "status": "consumer_unavailable",
+                    "error": "pika is not installed",
+                }
+            )
+            return
         params = pika.URLParameters(app.config["RABBITMQ_URL"])
         while True:
             connection = None

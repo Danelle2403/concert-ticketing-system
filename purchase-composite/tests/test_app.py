@@ -27,6 +27,7 @@ def client(tmp_path, monkeypatch):
 
 def test_checkout_uses_live_order_service_contract(client, monkeypatch):
     captured_order_payload = {}
+    sent_notifications = []
     monkeypatch.setattr(purchase_app, "authenticate_request_user", lambda: dict(AUTH_USER))
 
     def fake_req_json(method, url, payload=None, timeout=8):
@@ -45,6 +46,11 @@ def test_checkout_uses_live_order_service_contract(client, monkeypatch):
 
     monkeypatch.setattr(purchase_app, "req_json", fake_req_json)
     monkeypatch.setattr(purchase_app, "issue_ticket", lambda _event_id: "2")
+    monkeypatch.setattr(
+        purchase_app,
+        "send_purchase_confirmation_notification",
+        lambda payload: sent_notifications.append(payload) or True,
+    )
 
     response = client.post(
         "/purchase/checkout",
@@ -63,6 +69,9 @@ def test_checkout_uses_live_order_service_contract(client, monkeypatch):
         "SeatCategory": "Standard",
         "AmountPaid": 80.0,
     }
+    assert payload["seatCategory"] == "STANDARD"
+    assert payload["ticketDetails"][0]["ticketId"] == "2"
+    assert sent_notifications[0]["ticketDetails"][0]["seatCategory"] == "STANDARD"
 
 
 def test_ticket_status_update_pushes_external_order_status(client, monkeypatch):
@@ -176,6 +185,8 @@ def test_checkout_session_and_confirm_use_stripe_flow(client, monkeypatch):
     assert confirm_payload["orderIds"] == [77]
     assert confirm_payload["tickets"] == ["2"]
     assert confirm_payload["paymentChargeId"] == "ch_123"
+    assert confirm_payload["ticketDetails"][0]["ticketId"] == "2"
+    assert confirm_payload["ticketDetails"][0]["seatCategory"] == "STANDARD"
     assert captured_order_payload == {
         "FanId": 2,
         "TicketId": 2,
@@ -185,6 +196,7 @@ def test_checkout_session_and_confirm_use_stripe_flow(client, monkeypatch):
         "AmountPaid": 80.0,
     }
     assert sent_notifications[0]["purchaseId"] == confirm_payload["purchaseId"]
+    assert sent_notifications[0]["ticketDetails"][0]["ticketHash"]
 
 
 def test_create_external_order_rejects_non_numeric_ticket_ids():
