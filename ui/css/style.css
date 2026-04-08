@@ -1487,6 +1487,8 @@ a:hover { color: var(--text-primary); }
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 24px 0;
+    overflow-y: auto;
     z-index: 200;
     animation: fadeIn 0.2s ease;
 }
@@ -1502,10 +1504,13 @@ a:hover { color: var(--text-primary); }
     border-radius: var(--radius);
     padding: 36px;
     max-width: 480px;
+    max-height: calc(100dvh - 48px);
     width: 90%;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     animation: slideUp 0.3s ease;
 }
 
@@ -1526,7 +1531,16 @@ a:hover { color: var(--text-primary); }
     font-size: 0.95rem;
 }
 
-.modal-buttons { display: flex; gap: 12px; margin-top: 8px; }
+.modal-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(to top, var(--bg-card) 72%, rgba(26, 0, 48, 0));
+    padding-top: 10px;
+    z-index: 1;
+}
 
 .warning-text {
     font-size: 0.85rem;

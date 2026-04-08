@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css?v=20260408-osm-location-2">
+    <link rel="stylesheet" href="css/style.css?v=20260408-osm-location-4">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -205,22 +205,29 @@
                 </div>
             </div>
 
+            <div class="form-group location-picker">
+                <label for="edit-location-input">Location</label>
+                <input type="text" id="edit-location-input" placeholder="Search by venue, address, or postal code" autocomplete="off" required>
+                <div id="edit-location-suggestions" class="location-suggestions hidden" role="listbox" aria-label="Location suggestions"></div>
+                <p id="edit-location-status" class="helper-text">Search and select a valid location to update the venue.</p>
+            </div>
+
             <div class="form-grid">
                 <div class="form-group">
                     <label for="edit-venue-name">Venue Name</label>
-                    <input type="text" id="edit-venue-name">
+                    <input type="text" id="edit-venue-name" readonly>
                 </div>
                 <div class="form-group">
                     <label for="edit-venue-address">Address</label>
-                    <input type="text" id="edit-venue-address">
+                    <input type="text" id="edit-venue-address" readonly>
                 </div>
                 <div class="form-group">
                     <label for="edit-venue-city">City</label>
-                    <input type="text" id="edit-venue-city">
+                    <input type="text" id="edit-venue-city" readonly>
                 </div>
                 <div class="form-group">
                     <label for="edit-venue-country">Country</label>
-                    <input type="text" id="edit-venue-country">
+                    <input type="text" id="edit-venue-country" readonly>
                 </div>
             </div>
 
@@ -259,7 +266,7 @@
         </div>
     </div>
 
-    <script src="js/api.js?v=20260408-osm-location-2"></script>
+    <script src="js/api.js?v=20260408-osm-location-3"></script>
     <script src="js/form-validation.js?v=20260404-manager-fixes-3"></script>
     <script>
         const {
@@ -285,6 +292,11 @@
         let createLocationSuggestions = [];
         let createLocationRequestId = 0;
         let createLocationDebounce = null;
+        let editLocationSelection = null;
+        let editLocationSuggestions = [];
+        let editLocationRequestId = 0;
+        let editLocationDebounce = null;
+        let editLocationNeedsSelection = false;
 
         const defaultPricingTiers = [
             { code: "VIP", name: "VIP", price: 188, currency: "SGD" },
@@ -510,6 +522,234 @@
 
             if (!Number.isFinite(createLocationSelection.latitude) || !Number.isFinite(createLocationSelection.longitude)) {
                 setFieldError(input, "Selected location is invalid. Please choose a suggestion again.");
+                return false;
+            }
+
+            return true;
+        }
+
+        function editLocationElements() {
+            return {
+                input: document.getElementById("edit-location-input"),
+                suggestions: document.getElementById("edit-location-suggestions"),
+                status: document.getElementById("edit-location-status"),
+                venueName: document.getElementById("edit-venue-name"),
+                venueAddress: document.getElementById("edit-venue-address"),
+                venueCity: document.getElementById("edit-venue-city"),
+                venueCountry: document.getElementById("edit-venue-country")
+            };
+        }
+
+        function setEditLocationStatus(message, isError = false) {
+            const { status } = editLocationElements();
+            status.textContent = message;
+            status.classList.toggle("location-status-error", isError);
+        }
+
+        function hideEditLocationSuggestions() {
+            const { suggestions } = editLocationElements();
+            suggestions.classList.add("hidden");
+            suggestions.innerHTML = "";
+        }
+
+        function setEditVenueFieldsFromLocation(location) {
+            const elements = editLocationElements();
+            elements.venueName.value = String(location?.placeName || location?.name || "").trim();
+            elements.venueAddress.value = String(location?.formattedAddress || location?.address || "").trim();
+            elements.venueCity.value = String(location?.city || "").trim();
+            elements.venueCountry.value = String(location?.country || "").trim();
+        }
+
+        function resetEditLocationFields(clearInput = false, clearVenueFields = true) {
+            editLocationSelection = null;
+            editLocationSuggestions = [];
+            const elements = editLocationElements();
+            if (clearInput) {
+                elements.input.value = "";
+            }
+            if (clearVenueFields) {
+                elements.venueName.value = "";
+                elements.venueAddress.value = "";
+                elements.venueCity.value = "";
+                elements.venueCountry.value = "";
+            }
+            hideEditLocationSuggestions();
+        }
+
+        function applyEditLocationSelection(selection) {
+            editLocationSelection = selection;
+            editLocationNeedsSelection = false;
+            const elements = editLocationElements();
+            elements.input.value = selection.formattedAddress;
+            clearFieldError(elements.input);
+            setEditVenueFieldsFromLocation(selection);
+            hideEditLocationSuggestions();
+            setEditLocationStatus("Location selected and validated.");
+        }
+
+        function renderEditLocationSuggestions() {
+            const { suggestions } = editLocationElements();
+            if (!editLocationSuggestions.length) {
+                hideEditLocationSuggestions();
+                return;
+            }
+
+            suggestions.innerHTML = editLocationSuggestions
+                .map((suggestion, index) => `
+                    <button
+                        type="button"
+                        class="location-suggestion-item"
+                        data-edit-location-index="${index}"
+                    >
+                        <strong>${escapeHtml(suggestion.placeName)}</strong>
+                        <span>${escapeHtml(suggestion.formattedAddress)}</span>
+                    </button>
+                `)
+                .join("");
+            suggestions.classList.remove("hidden");
+
+            suggestions.querySelectorAll(".location-suggestion-item").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const index = Number(button.dataset.editLocationIndex);
+                    const selectedSuggestion = editLocationSuggestions[index];
+                    if (!selectedSuggestion) {
+                        return;
+                    }
+
+                    hideEditLocationSuggestions();
+                    setEditLocationStatus("Validating selected location...");
+
+                    validateManagerLocation(selectedSuggestion)
+                        .then((payload) => {
+                            const rawLocation = payload?.data?.location || payload?.location;
+                            const validated = normalizeLocationSuggestion(rawLocation);
+                            if (!validated) {
+                                throw new Error("Location validation returned incomplete data.");
+                            }
+                            applyEditLocationSelection(validated);
+                        })
+                        .catch((error) => {
+                            editLocationSelection = null;
+                            editLocationNeedsSelection = true;
+                            setEditLocationStatus(
+                                error.message || "Location validation failed. Select a valid suggestion.",
+                                true
+                            );
+                        });
+                });
+            });
+        }
+
+        function loadEditLocationSuggestions(query) {
+            const searchValue = String(query || "").trim();
+            if (searchValue.length < 2) {
+                editLocationRequestId += 1;
+                editLocationSuggestions = [];
+                hideEditLocationSuggestions();
+                setEditLocationStatus("Type at least 2 characters to search locations.");
+                return;
+            }
+
+            const requestId = ++editLocationRequestId;
+            setEditLocationStatus("Searching for locations...");
+
+            searchManagerLocations(searchValue)
+                .then((payload) => {
+                    if (requestId !== editLocationRequestId) {
+                        return;
+                    }
+
+                    const suggestions = (payload?.data?.suggestions || payload?.suggestions || [])
+                        .map(normalizeLocationSuggestion)
+                        .filter(Boolean);
+                    editLocationSuggestions = suggestions;
+                    if (!suggestions.length) {
+                        hideEditLocationSuggestions();
+                        setEditLocationStatus("No matching real-world locations found.", true);
+                        return;
+                    }
+
+                    renderEditLocationSuggestions();
+                    setEditLocationStatus("Select one location from the list.");
+                })
+                .catch((error) => {
+                    if (requestId !== editLocationRequestId) {
+                        return;
+                    }
+
+                    editLocationSuggestions = [];
+                    hideEditLocationSuggestions();
+                    setEditLocationStatus(
+                        error.message || "Location search failed. Try again in a moment.",
+                        true
+                    );
+                });
+        }
+
+        function onEditLocationInput() {
+            if (editLocationSelection) {
+                editLocationSelection = null;
+            }
+            editLocationNeedsSelection = true;
+            resetEditLocationFields(false, true);
+
+            if (editLocationDebounce) {
+                window.clearTimeout(editLocationDebounce);
+            }
+            const query = editLocationElements().input.value;
+            editLocationDebounce = window.setTimeout(() => {
+                loadEditLocationSuggestions(query);
+            }, 220);
+        }
+
+        function primeEditLocationFromEvent(event) {
+            const details = event?.venueDetails || {};
+            const formattedAddress = [
+                details.name,
+                details.address,
+                details.city,
+                details.country
+            ]
+                .map((value) => String(value || "").trim())
+                .filter(Boolean)
+                .join(", ");
+            const fallbackLabel = String(event?.venue || "").trim();
+            const currentLabel = formattedAddress || fallbackLabel || "";
+
+            const elements = editLocationElements();
+            elements.input.value = currentLabel;
+            setEditVenueFieldsFromLocation({
+                placeName: details.name || fallbackLabel || "",
+                formattedAddress: details.address || currentLabel || "",
+                city: details.city || "",
+                country: details.country || ""
+            });
+
+            editLocationSelection = currentLabel
+                ? {
+                    placeName: details.name || fallbackLabel || currentLabel,
+                    formattedAddress: details.address || currentLabel,
+                    city: details.city || "",
+                    country: details.country || ""
+                }
+                : null;
+            editLocationNeedsSelection = false;
+            hideEditLocationSuggestions();
+            if (currentLabel) {
+                setEditLocationStatus("Current location loaded. Search and select if you need to change it.");
+            } else {
+                setEditLocationStatus("Search and select a valid location to update the venue.");
+            }
+        }
+
+        function validateEditLocationSelection() {
+            const { input } = editLocationElements();
+            if (!validateRequired(input, "Search and select a valid location.")) {
+                return false;
+            }
+
+            if (editLocationNeedsSelection && !editLocationSelection) {
+                setFieldError(input, "Select a location from the suggestions before saving.");
                 return false;
             }
 
@@ -800,6 +1040,11 @@
         }
 
         function buildEditPayload() {
+            const selectedLocation = editLocationSelection;
+            const venueName = selectedLocation?.placeName || document.getElementById("edit-venue-name").value.trim();
+            const venueAddress = selectedLocation?.formattedAddress || document.getElementById("edit-venue-address").value.trim();
+            const venueCity = selectedLocation?.city || document.getElementById("edit-venue-city").value.trim();
+            const venueCountry = selectedLocation?.country || document.getElementById("edit-venue-country").value.trim();
             return {
                 managerId,
                 title: document.getElementById("edit-title").value.trim(),
@@ -808,10 +1053,10 @@
                 endAt: toIsoString(document.getElementById("edit-end-at").value),
                 status: document.getElementById("edit-status").value,
                 venue: {
-                    name: document.getElementById("edit-venue-name").value.trim(),
-                    address: document.getElementById("edit-venue-address").value.trim(),
-                    city: document.getElementById("edit-venue-city").value.trim(),
-                    country: document.getElementById("edit-venue-country").value.trim()
+                    name: venueName,
+                    address: venueAddress,
+                    city: venueCity,
+                    country: venueCountry
                 }
             };
         }
@@ -934,10 +1179,7 @@
             document.getElementById("edit-start-at").value = toDatetimeLocal(event.startAt);
             document.getElementById("edit-end-at").value = toDatetimeLocal(event.endAt);
             document.getElementById("edit-status").value = event.statusLabel;
-            document.getElementById("edit-venue-name").value = event.venueDetails.name || "";
-            document.getElementById("edit-venue-address").value = event.venueDetails.address || "";
-            document.getElementById("edit-venue-city").value = event.venueDetails.city || "";
-            document.getElementById("edit-venue-country").value = event.venueDetails.country || "";
+            primeEditLocationFromEvent(event);
             clearErrors(document.getElementById("edit-modal"));
             hideMessages("edit");
             document.getElementById("edit-modal").classList.remove("hidden");
@@ -945,6 +1187,9 @@
 
         function closeEditModal() {
             editingEventId = null;
+            resetEditLocationFields(true, true);
+            editLocationNeedsSelection = false;
+            setEditLocationStatus("Search and select a valid location to update the venue.");
             clearErrors(document.getElementById("edit-modal"));
             hideMessages("edit");
             document.getElementById("edit-modal").classList.add("hidden");
@@ -1129,12 +1374,11 @@
             const statusField = document.getElementById("edit-status");
             const startField = document.getElementById("edit-start-at");
             const endField = document.getElementById("edit-end-at");
-            const venueNameField = document.getElementById("edit-venue-name");
 
             let isValid = true;
             isValid = validateRequired(titleField, "Enter the event title.") && isValid;
             isValid = validateRequired(statusField, "Select whether the event is draft or published.") && isValid;
-            isValid = validateRequired(venueNameField, "Enter the venue name.") && isValid;
+            isValid = validateEditLocationSelection() && isValid;
             isValid = validateDateRange(startField, endField) && isValid;
 
             if (!isValid) {
@@ -1263,9 +1507,23 @@
             }
         });
 
+        const editLocationInput = document.getElementById("edit-location-input");
+        editLocationInput.addEventListener("input", onEditLocationInput);
+        editLocationInput.addEventListener("focus", () => {
+            if (editLocationSuggestions.length) {
+                renderEditLocationSuggestions();
+            }
+        });
+        editLocationInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !document.getElementById("edit-location-suggestions").classList.contains("hidden")) {
+                event.preventDefault();
+            }
+        });
+
         document.addEventListener("click", (event) => {
             if (!event.target.closest(".location-picker")) {
                 hideCreateLocationSuggestions();
+                hideEditLocationSuggestions();
             }
         });
 
