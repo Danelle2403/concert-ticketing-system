@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css?v=20260409-refund-link-1">
+    <link rel="stylesheet" href="css/style.css?v=20260409-ticket-qr-1">
 </head>
 <body>
 
@@ -76,7 +76,8 @@
         </div>
     </div>
 
-    <script src="js/api.js?v=20260409-refund-link-1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="js/api.js?v=20260409-ticket-qr-1"></script>
     <script>
 
         // Check login
@@ -96,6 +97,83 @@
                 .filter(Boolean)
                 .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
                 .join(" ");
+        }
+
+        function normalizeTicketStatus(status) {
+            return String(status || "").trim().toLowerCase();
+        }
+
+        function fallbackHashHex(value) {
+            let hash = 2166136261;
+            const text = String(value || "");
+            for (let index = 0; index < text.length; index += 1) {
+                hash ^= text.charCodeAt(index);
+                hash = Math.imul(hash, 16777619);
+            }
+            return (hash >>> 0).toString(16).padStart(8, "0");
+        }
+
+        async function hashTicketSeed(seed) {
+            if (window.crypto?.subtle && typeof TextEncoder !== "undefined") {
+                const encoded = new TextEncoder().encode(seed);
+                const digest = await window.crypto.subtle.digest("SHA-256", encoded);
+                return [...new Uint8Array(digest)]
+                    .map((byte) => byte.toString(16).padStart(2, "0"))
+                    .join("");
+            }
+
+            return `${fallbackHashHex(seed)}${fallbackHashHex(`concert-hub:${seed}`)}`;
+        }
+
+        async function buildTicketQrModel(ticket, seatCategory) {
+            const seed = JSON.stringify({
+                ticketId: String(ticket.ticketId || ""),
+                eventId: String(ticket.eventId || ""),
+                userId: String(user?.userId || ""),
+                date: String(ticket.date || ""),
+                seatCategory: String(seatCategory || "")
+            });
+            const ticketHash = await hashTicketSeed(seed);
+            return {
+                ticketHash,
+                qrPayload: JSON.stringify({
+                    ticketId: String(ticket.ticketId || ""),
+                    eventId: String(ticket.eventId || ""),
+                    ticketHash
+                })
+            };
+        }
+
+        function renderTicketQrCode(card, qrModel, isActive) {
+            const qrFrame = card.querySelector(".ticket-qr-frame");
+            const hashValue = card.querySelector(".ticket-hash-value");
+            const statusDetail = card.querySelector(".ticket-qr-status");
+            if (hashValue) {
+                hashValue.textContent = qrModel?.ticketHash || "Unavailable";
+            }
+
+            if (!qrFrame || !statusDetail || !qrModel) {
+                return;
+            }
+
+            if (!isActive) {
+                qrFrame.classList.add("ticket-qr-frame-inactive");
+                statusDetail.textContent = "QR is only shown for active tickets.";
+                return;
+            }
+
+            if (typeof window.QRCode !== "function") {
+                statusDetail.textContent = "QR preview is unavailable right now.";
+                return;
+            }
+
+            qrFrame.innerHTML = "";
+            new window.QRCode(qrFrame, {
+                text: qrModel.qrPayload,
+                width: 132,
+                height: 132
+            });
+            statusDetail.textContent = "Present this QR at entry.";
         }
 
         function buildLoginRedirectHref() {
@@ -149,10 +227,13 @@
                     }
                 }));
 
-                data.events.forEach(ticket => {
+                for (const ticket of data.events) {
                     const eventRecord = eventLookup[ticket.eventId];
                     const refundState = deriveRefundState(ticket, eventRecord);
-                    const seatCategory = formatSeatCategoryLabel(ticketTypeLookup[String(ticket.ticketId)]);
+                    const rawSeatCategory = ticketTypeLookup[String(ticket.ticketId)] || "";
+                    const seatCategory = formatSeatCategoryLabel(rawSeatCategory);
+                    const isActiveTicket = normalizeTicketStatus(ticket.status) === "active";
+                    const qrModel = await buildTicketQrModel(ticket, rawSeatCategory);
                     const card = document.createElement("div");
                     card.className = "ticket-card";
                     if (
@@ -175,6 +256,12 @@
                             <p>${refundState.message}</p>
                         </div>
                         <div class="ticket-actions">
+                            <div class="ticket-qr-block">
+                                <div class="ticket-qr-frame">${isActiveTicket ? '<div class="ticket-qr-placeholder">Generating QR...</div>' : '<div class="ticket-qr-placeholder">Inactive Ticket</div>'}</div>
+                                <p class="ticket-qr-status">${isActiveTicket ? 'Preparing ticket QR...' : 'QR is only shown for active tickets.'}</p>
+                                <p class="ticket-hash-label">Ticket Hash</p>
+                                <code class="ticket-hash-value">Generating...</code>
+                            </div>
                             <button class="btn-danger refund-action-btn" ${refundState.canRefund ? '' : 'disabled'}>
                                 ${refundState.buttonLabel}
                             </button>
@@ -191,8 +278,9 @@
                             );
                         });
                     }
+                    renderTicketQrCode(card, qrModel, isActiveTicket);
                     list.appendChild(card);
-                });
+                }
 
             } catch (err) {
                 document.getElementById("loading").classList.add("hidden");

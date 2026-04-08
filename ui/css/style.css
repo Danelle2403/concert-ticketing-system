@@ -1430,6 +1430,63 @@ a:hover { color: var(--text-primary); }
     min-width: 160px;
 }
 
+.ticket-qr-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.ticket-qr-frame {
+    width: 132px;
+    height: 132px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.ticket-qr-frame img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.ticket-qr-frame-inactive {
+    background: rgba(148, 163, 184, 0.12);
+}
+
+.ticket-qr-placeholder {
+    font-size: 0.78rem;
+    text-align: center;
+    color: #475569;
+}
+
+.ticket-qr-status,
+.ticket-hash-label {
+    margin: 0;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.ticket-hash-value {
+    display: block;
+    max-width: 132px;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
 /* ── STATUS BADGES ───────────────────────────────────────── */
 .ticket-status {
     display: inline-block;
@@ -2275,6 +2332,10 @@ a:hover { color: var(--text-primary); }
 
     .ticket-actions {
         min-width: 0;
+        width: 100%;
+    }
+
+    .ticket-qr-block {
         width: 100%;
     }
 
