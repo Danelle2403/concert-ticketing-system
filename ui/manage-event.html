@@ -99,7 +99,7 @@
                             <div class="form-group location-picker">
                                 <div class="location-picker-head">
                                     <label for="create-location-input">Location</label>
-                                    <button type="button" id="create-manual-toggle" class="btn-secondary location-mode-toggle">Enter Venue Manually</button>
+                                    <button type="button" id="create-manual-toggle" class="btn-secondary location-mode-toggle hidden">Enter Venue Manually</button>
                                 </div>
                                 <input type="text" id="create-location-input" placeholder="Search by venue, address, or postal code" autocomplete="off" required>
                                 <div id="create-location-suggestions" class="location-suggestions hidden" role="listbox" aria-label="Location suggestions"></div>
@@ -211,7 +211,7 @@
             <div class="form-group location-picker">
                 <div class="location-picker-head">
                     <label for="edit-location-input">Location</label>
-                    <button type="button" id="edit-manual-toggle" class="btn-secondary location-mode-toggle">Enter Venue Manually</button>
+                    <button type="button" id="edit-manual-toggle" class="btn-secondary location-mode-toggle hidden">Enter Venue Manually</button>
                 </div>
                 <input type="text" id="edit-location-input" placeholder="Search by venue, address, or postal code" autocomplete="off" required>
                 <div id="edit-location-suggestions" class="location-suggestions hidden" role="listbox" aria-label="Location suggestions"></div>
@@ -305,6 +305,8 @@
         let editLocationNeedsSelection = false;
         let createManualVenueMode = false;
         let editManualVenueMode = false;
+        let createManualVenueAvailable = false;
+        let editManualVenueAvailable = false;
 
         const defaultPricingTiers = [
             { code: "VIP", name: "VIP", price: 188, currency: "SGD" },
@@ -348,11 +350,17 @@
             elements.venueCountry.readOnly = isReadOnly;
         }
 
+        function setCreateManualVenueAvailability(isAvailable) {
+            createManualVenueAvailable = isAvailable;
+            createLocationElements().toggle.classList.toggle("hidden", !isAvailable);
+        }
+
         function setCreateVenueMode(isManual) {
             createManualVenueMode = isManual;
             const elements = createLocationElements();
             elements.toggle.textContent = isManual ? "Use Location Search" : "Enter Venue Manually";
             elements.toggle.classList.toggle("is-active", isManual);
+            elements.toggle.classList.toggle("hidden", !createManualVenueAvailable && !isManual);
             elements.input.disabled = isManual;
             if (isManual) {
                 createLocationSelection = null;
@@ -367,6 +375,9 @@
 
             setVenueFieldsReadOnly(elements, true);
             hideCreateLocationSuggestions();
+            if (!createManualVenueAvailable) {
+                elements.toggle.classList.add("hidden");
+            }
             setCreateLocationStatus("Start typing to search real venues and addresses.");
         }
 
@@ -474,12 +485,14 @@
                             if (!validated) {
                                 throw new Error("Location validation returned incomplete data.");
                             }
+                            setCreateManualVenueAvailability(false);
                             applyCreateLocationSelection(validated);
                         })
                         .catch((error) => {
                             resetCreateLocationFields(false);
+                            setCreateManualVenueAvailability(true);
                             setCreateLocationStatus(
-                                error.message || "Location validation failed. Select a valid suggestion or switch to manual venue entry.",
+                                error.message || "Location validation failed. Use manual venue entry for now.",
                                 true
                             );
                         });
@@ -516,6 +529,7 @@
                         return;
                     }
 
+                    setCreateManualVenueAvailability(false);
                     renderCreateLocationSuggestions();
                     setCreateLocationStatus("Select one location from the list.");
                 })
@@ -526,8 +540,9 @@
 
                     createLocationSuggestions = [];
                     hideCreateLocationSuggestions();
+                    setCreateManualVenueAvailability(true);
                     setCreateLocationStatus(
-                        error.message || "Location search failed. Try again in a moment or switch to manual venue entry.",
+                        error.message || "Location search failed. Use manual venue entry for now.",
                         true
                     );
                 });
@@ -587,11 +602,17 @@
             };
         }
 
+        function setEditManualVenueAvailability(isAvailable) {
+            editManualVenueAvailable = isAvailable;
+            editLocationElements().toggle.classList.toggle("hidden", !isAvailable);
+        }
+
         function setEditVenueMode(isManual) {
             editManualVenueMode = isManual;
             const elements = editLocationElements();
             elements.toggle.textContent = isManual ? "Use Location Search" : "Enter Venue Manually";
             elements.toggle.classList.toggle("is-active", isManual);
+            elements.toggle.classList.toggle("hidden", !editManualVenueAvailable && !isManual);
             elements.input.disabled = isManual;
             if (isManual) {
                 editLocationSelection = null;
@@ -607,6 +628,9 @@
 
             setVenueFieldsReadOnly(elements, true);
             hideEditLocationSuggestions();
+            if (!editManualVenueAvailable) {
+                elements.toggle.classList.add("hidden");
+            }
             if (elements.input.value.trim()) {
                 setEditLocationStatus("Current location loaded. Search and select if you need to change it.");
             } else {
@@ -700,13 +724,15 @@
                             if (!validated) {
                                 throw new Error("Location validation returned incomplete data.");
                             }
+                            setEditManualVenueAvailability(false);
                             applyEditLocationSelection(validated);
                         })
                         .catch((error) => {
                             editLocationSelection = null;
                             editLocationNeedsSelection = true;
+                            setEditManualVenueAvailability(true);
                             setEditLocationStatus(
-                                error.message || "Location validation failed. Select a valid suggestion or switch to manual venue entry.",
+                                error.message || "Location validation failed. Use manual venue entry for now.",
                                 true
                             );
                         });
@@ -743,6 +769,7 @@
                         return;
                     }
 
+                    setEditManualVenueAvailability(false);
                     renderEditLocationSuggestions();
                     setEditLocationStatus("Select one location from the list.");
                 })
@@ -753,8 +780,9 @@
 
                     editLocationSuggestions = [];
                     hideEditLocationSuggestions();
+                    setEditManualVenueAvailability(true);
                     setEditLocationStatus(
-                        error.message || "Location search failed. Try again in a moment or switch to manual venue entry.",
+                        error.message || "Location search failed. Use manual venue entry for now.",
                         true
                     );
                 });
@@ -812,6 +840,7 @@
                 : null;
             editLocationNeedsSelection = false;
             hideEditLocationSuggestions();
+            setEditManualVenueAvailability(false);
             setEditVenueMode(false);
             if (currentLabel) {
                 setEditLocationStatus("Current location loaded. Search and select if you need to change it.");
@@ -1051,6 +1080,7 @@
             document.getElementById("pricing-tier-rows").innerHTML = "";
             document.getElementById("seat-section-rows").innerHTML = "";
             resetCreateLocationFields(true);
+            setCreateManualVenueAvailability(false);
             setCreateVenueMode(false);
 
             defaultPricingTiers.forEach((tier) => addPricingTierRow(tier));
@@ -1273,6 +1303,7 @@
             editingEventId = null;
             resetEditLocationFields(true, true);
             editLocationNeedsSelection = false;
+            setEditManualVenueAvailability(false);
             setEditVenueMode(false);
             setEditLocationStatus("Search and select a valid location to update the venue.");
             clearErrors(document.getElementById("edit-modal"));
