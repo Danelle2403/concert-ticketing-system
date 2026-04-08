@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css?v=20260404-ui-refresh-4">
+    <link rel="stylesheet" href="css/style.css?v=20260408-capacity-1">
 </head>
 <body>
 
@@ -56,6 +56,7 @@
             <div class="form-group">
                 <label for="seat-category">Seat Category</label>
                 <select id="seat-category"></select>
+                <p id="seat-availability" class="helper-text">Loading live seat availability...</p>
             </div>
 
             <div class="form-group">
@@ -110,7 +111,7 @@
     </main>
 
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="js/api.js?v=20260405-ui-fixes-2"></script>
+    <script src="js/api.js?v=20260408-capacity-1"></script>
     <script src="js/form-validation.js?v=20260404-ui-refresh-4"></script>
     <script>
         const {
@@ -132,6 +133,9 @@
         let paymentElement = null;
         let activeCheckoutSession = null;
         let holdTimerHandle = null;
+        let inventoryByCategory = new Map();
+        let inventoryLoaded = false;
+        let inventoryLoadError = "";
 
         if (!event) {
             window.location.href = "index.html";
@@ -154,20 +158,80 @@
         seatCategoryField.addEventListener("change", updateTotal);
         qtyField.addEventListener("input", updateTotal);
 
+        function normalizeEventIdKey(value) {
+            const text = String(value ?? "").trim();
+            if (!text) {
+                return "";
+            }
+            const prefixedMatch = /^con-(\d+)$/i.exec(text);
+            if (prefixedMatch) {
+                return String(Number(prefixedMatch[1]));
+            }
+            return text;
+        }
+
+        function normalizeSeatCategory(value) {
+            return String(value || "").trim().toUpperCase();
+        }
+
+        function buildInventoryByCategory(rows) {
+            const inventory = new Map();
+            rows.forEach((row) => {
+                const key = normalizeSeatCategory(row?.seatCategory);
+                if (!key) {
+                    return;
+                }
+                inventory.set(key, {
+                    totalSeats: Number(row.totalSeats),
+                    availableSeats: Number(row.availableSeats)
+                });
+            });
+            return inventory;
+        }
+
+        async function loadInventoryForEvent() {
+            inventoryLoaded = false;
+            inventoryLoadError = "";
+            document.getElementById("seat-availability").textContent = "Loading live seat availability...";
+
+            const eventKey = normalizeEventIdKey(event.eventId || event.id);
+            try {
+                let rows = [];
+                try {
+                    rows = await getInventoryByEvent(event.eventId || event.id);
+                } catch (_error) {
+                    const snapshot = await getInventorySnapshot();
+                    rows = snapshot.filter(
+                        (row) => normalizeEventIdKey(row?.eventId) === eventKey
+                    );
+                }
+                inventoryByCategory = buildInventoryByCategory(rows);
+                inventoryLoaded = true;
+            } catch (_error) {
+                inventoryByCategory = new Map();
+                inventoryLoaded = true;
+                inventoryLoadError = "Live availability is temporarily unavailable.";
+            }
+
+            renderSeatOptions();
+        }
+
         function getSeatOptions() {
             const tiers = Array.isArray(event.pricingTiers) ? event.pricingTiers : [];
             return tiers
                 .map((tier) => ({
-                    code: tier.code || tier.name,
+                    code: normalizeSeatCategory(tier.code || tier.name),
                     label: tier.name || tier.code,
                     price: Number(tier.price) || 0,
-                    currency: (tier.currency || "SGD").toUpperCase()
+                    currency: (tier.currency || "SGD").toUpperCase(),
+                    inventory: inventoryByCategory.get(normalizeSeatCategory(tier.code || tier.name)) || null
                 }))
                 .sort((left, right) => left.price - right.price);
         }
 
         function renderSeatOptions() {
             const options = getSeatOptions();
+            const currentSelection = normalizeSeatCategory(seatCategoryField.value);
             seatCategoryField.innerHTML = "";
 
             options.forEach((option) => {
@@ -175,9 +239,37 @@
                 optionElement.value = option.code;
                 optionElement.dataset.price = String(option.price);
                 optionElement.dataset.currency = option.currency;
-                optionElement.textContent = `${option.label} · $${option.price.toFixed(2)}`;
+                optionElement.dataset.availableSeats = option.inventory
+                    ? String(option.inventory.availableSeats)
+                    : "";
+                optionElement.dataset.totalSeats = option.inventory
+                    ? String(option.inventory.totalSeats)
+                    : "";
+                if (option.inventory && option.inventory.availableSeats <= 0) {
+                    optionElement.disabled = true;
+                }
+                const availabilityLabel = option.inventory
+                    ? ` · ${Math.max(0, option.inventory.availableSeats)} left`
+                    : "";
+                optionElement.textContent = `${option.label} · $${option.price.toFixed(2)}${availabilityLabel}`;
                 seatCategoryField.appendChild(optionElement);
             });
+
+            if (currentSelection) {
+                const matchingOption = [...seatCategoryField.options].find(
+                    (option) => normalizeSeatCategory(option.value) === currentSelection && !option.disabled
+                );
+                if (matchingOption) {
+                    seatCategoryField.value = matchingOption.value;
+                }
+            }
+
+            if (!seatCategoryField.value || seatCategoryField.selectedOptions[0]?.disabled) {
+                const firstEnabled = [...seatCategoryField.options].find((option) => !option.disabled);
+                if (firstEnabled) {
+                    seatCategoryField.value = firstEnabled.value;
+                }
+            }
 
             updateTotal();
         }
@@ -185,18 +277,66 @@
         function selectedSeatOption() {
             const option = seatCategoryField.selectedOptions[0];
             if (!option) {
-                return { code: "", price: 0, currency: "SGD" };
+                return { code: "", price: 0, currency: "SGD", availableSeats: null, totalSeats: null };
             }
             return {
                 code: option.value,
                 price: Number(option.dataset.price || 0),
-                currency: option.dataset.currency || "SGD"
+                currency: option.dataset.currency || "SGD",
+                availableSeats: option.dataset.availableSeats === "" ? null : Number(option.dataset.availableSeats),
+                totalSeats: option.dataset.totalSeats === "" ? null : Number(option.dataset.totalSeats)
             };
         }
 
         function updateTotal() {
-            const qty = parseInt(qtyField.value, 10) || 1;
+            let qty = parseInt(qtyField.value, 10) || 1;
             const seat = selectedSeatOption();
+            const reserveButton = document.getElementById("reserve-button");
+            const availabilityLabel = document.getElementById("seat-availability");
+
+            if (!seat.code) {
+                qtyField.max = "1";
+                qtyField.value = "1";
+                reserveButton.disabled = true;
+                availabilityLabel.textContent = "No seat categories are available for this event.";
+                document.getElementById("total-price").textContent = "$0.00";
+                return;
+            }
+
+            if (seat.availableSeats !== null && Number.isFinite(seat.availableSeats)) {
+                const availableSeats = Math.max(0, seat.availableSeats);
+                const totalSeats = Number.isFinite(seat.totalSeats) ? Math.max(0, seat.totalSeats) : null;
+                const maxQty = Math.max(1, Math.min(10, availableSeats));
+                qtyField.max = String(maxQty);
+                if (qty > maxQty) {
+                    qty = maxQty;
+                    qtyField.value = String(maxQty);
+                }
+
+                if (availableSeats <= 0) {
+                    reserveButton.disabled = true;
+                    availabilityLabel.textContent = "Sold out for this seat category.";
+                } else if (totalSeats !== null) {
+                    reserveButton.disabled = false;
+                    availabilityLabel.textContent = `${availableSeats} of ${totalSeats} tickets left for this seat category.`;
+                } else {
+                    reserveButton.disabled = false;
+                    availabilityLabel.textContent = `${availableSeats} tickets left for this seat category.`;
+                }
+            } else if (inventoryLoadError) {
+                qtyField.max = "10";
+                reserveButton.disabled = false;
+                availabilityLabel.textContent = inventoryLoadError;
+            } else if (!inventoryLoaded) {
+                qtyField.max = "10";
+                reserveButton.disabled = false;
+                availabilityLabel.textContent = "Loading live seat availability...";
+            } else {
+                qtyField.max = "10";
+                reserveButton.disabled = true;
+                availabilityLabel.textContent = "No inventory available for this seat category.";
+            }
+
             document.getElementById("total-price").textContent = `$${(qty * seat.price).toFixed(2)}`;
         }
 
@@ -366,6 +506,22 @@
                 return;
             }
 
+            const selectedSeat = selectedSeatOption();
+            const requestedQuantity = parseInt(qtyField.value, 10) || 1;
+            if (!selectedSeat.code) {
+                showError("No seat categories are available for this event.");
+                return;
+            }
+            if (selectedSeat.availableSeats !== null && requestedQuantity > selectedSeat.availableSeats) {
+                showError(`Only ${selectedSeat.availableSeats} ticket(s) left for ${selectedSeat.code}.`);
+                focusFirstError(form);
+                return;
+            }
+            if (selectedSeat.availableSeats !== null && selectedSeat.availableSeats <= 0) {
+                showError(`No tickets left for ${selectedSeat.code}. Choose another seat category.`);
+                return;
+            }
+
             if (!user) {
                 window.location.href = "login.html";
                 return;
@@ -439,6 +595,7 @@
         }
 
         renderSeatOptions();
+        loadInventoryForEvent().catch(() => null);
         ensurePurchaseConfig().catch(() => null);
 
         document.getElementById("purchase-form").addEventListener("submit", (browserEvent) => {

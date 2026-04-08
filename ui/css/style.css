@@ -2091,6 +2091,17 @@ a:hover { color: var(--text-primary); }
     line-height: 1.6;
 }
 
+.manager-inventory-block {
+    margin-top: 6px;
+}
+
+.manager-inventory-line {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin: 0;
+}
+
 .manager-access-card {
     max-width: 520px;
 }

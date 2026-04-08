@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css?v=20260404-ui-refresh-2">
+    <link rel="stylesheet" href="css/style.css?v=20260408-ticket-type-1">
 </head>
 <body>
 
@@ -76,7 +76,7 @@
         </div>
     </div>
 
-    <script src="js/api.js?v=20260405-ui-fixes-2"></script>
+    <script src="js/api.js?v=20260408-ticket-type-1"></script>
     <script>
 
         // Check login
@@ -85,6 +85,18 @@
         let selectedTicketId = null;
         let selectedRefundSource = "customer_request";
         let selectedTicketName = "";
+
+        function formatSeatCategoryLabel(rawValue) {
+            const value = String(rawValue || "").trim();
+            if (!value) {
+                return "Not Available";
+            }
+            return value
+                .split(/[_\s-]+/)
+                .filter(Boolean)
+                .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+                .join(" ");
+        }
 
         if (!user) {
             document.getElementById("loading").classList.add("hidden");
@@ -119,9 +131,21 @@
                     }
                 }));
 
+                const uniqueTicketIds = [...new Set(data.events.map((ticket) => ticket.ticketId).filter(Boolean))];
+                const ticketTypeLookup = {};
+                await Promise.all(uniqueTicketIds.map(async (ticketId) => {
+                    try {
+                        const mapping = await getPurchaseTicketMapping(ticketId);
+                        ticketTypeLookup[String(ticketId)] = mapping?.seatCategory || "";
+                    } catch (_error) {
+                        ticketTypeLookup[String(ticketId)] = "";
+                    }
+                }));
+
                 data.events.forEach(ticket => {
                     const eventRecord = eventLookup[ticket.eventId];
                     const refundState = deriveRefundState(ticket, eventRecord);
+                    const seatCategory = formatSeatCategoryLabel(ticketTypeLookup[String(ticket.ticketId)]);
                     const card = document.createElement("div");
                     card.className = "ticket-card";
                     if (
@@ -137,6 +161,7 @@
                             <p>📍 ${ticket.venue}</p>
                             <p>📅 ${ticket.date}</p>
                             <p>🎫 Ticket ID: <strong>${ticket.ticketId}</strong></p>
+                            <p>🎟️ Ticket Type: <strong>${seatCategory}</strong></p>
                             <span class="ticket-status status-${ticket.status}">
                                 ${ticket.status}
                             </span>

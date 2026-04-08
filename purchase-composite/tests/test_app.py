@@ -210,3 +210,26 @@ def test_purchase_status_rejects_other_users(client, monkeypatch):
     response = client.get("/purchase/ORDER-DEMO-2/status")
 
     assert response.status_code == 403
+
+
+def test_ticket_lookup_allows_owner_via_auth(client, monkeypatch):
+    monkeypatch.setattr(purchase_app, "authenticate_request_user", lambda: dict(AUTH_USER))
+
+    response = client.get("/purchase/ticket/tkt-002")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ticketId"] == "2"
+    assert payload["seatCategory"] == "STANDARD"
+
+
+def test_ticket_lookup_rejects_non_owner_via_auth(client, monkeypatch):
+    monkeypatch.setattr(
+        purchase_app,
+        "authenticate_request_user",
+        lambda: {"id": 99, "userId": 99, "email": "manager@example.com", "role": "manager"},
+    )
+
+    response = client.get("/purchase/ticket/tkt-002")
+
+    assert response.status_code == 403

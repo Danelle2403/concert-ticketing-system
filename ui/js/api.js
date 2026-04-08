@@ -306,6 +306,15 @@ async function getInventorySnapshot() {
     return payload.inventory || [];
 }
 
+async function getInventoryByEvent(eventId) {
+    const payload = await apiRequest(`/inventory/${encodeURIComponent(String(eventId))}`, {
+        includeAuth: false,
+        baseUrl: INVENTORY_API_BASE,
+        timeoutMs: 5000
+    });
+    return payload.inventory || [];
+}
+
 // Create/Edit Event Composite via Kong
 async function createManagerEvent(data) {
     const payload = await apiRequest("/manager/events", {
@@ -360,6 +369,10 @@ async function buyTicket(data) {
 
 async function getPurchaseStatus(purchaseId) {
     return apiRequest(`/purchase/${purchaseId}/status`);
+}
+
+async function getPurchaseTicketMapping(ticketId) {
+    return apiRequest(`/purchase/ticket/${ticketId}`);
 }
 
 // Refund Composite

@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#1a0030">
     <link rel="icon" type="image/svg+xml" href="assets/concert-hub-mark.svg">
     <link rel="apple-touch-icon" href="assets/concert-hub-mark.svg">
-    <link rel="stylesheet" href="css/style.css?v=20260404-manager-fixes-3">
+    <link rel="stylesheet" href="css/style.css?v=20260408-capacity-1">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -253,7 +253,7 @@
         </div>
     </div>
 
-    <script src="js/api.js?v=20260405-ui-fixes-2"></script>
+    <script src="js/api.js?v=20260408-capacity-1"></script>
     <script src="js/form-validation.js?v=20260404-manager-fixes-3"></script>
     <script>
         const {
@@ -272,6 +272,8 @@
         let editingEventId = null;
         let cancellingEventId = null;
         let cancellingEventTitle = "";
+        let managerInventoryByEvent = new Map();
+        let managerInventoryError = "";
 
         const defaultPricingTiers = [
             { code: "VIP", name: "VIP", price: 188, currency: "SGD" },
@@ -293,6 +295,78 @@
                 "\"": "&quot;",
                 "'": "&#39;"
             }[char]));
+        }
+
+        function normalizeEventIdKey(value) {
+            const text = String(value ?? "").trim();
+            if (!text) {
+                return "";
+            }
+            const prefixedMatch = /^con-(\d+)$/i.exec(text);
+            if (prefixedMatch) {
+                return String(Number(prefixedMatch[1]));
+            }
+            return text;
+        }
+
+        function normalizeSeatCategory(value) {
+            return String(value || "").trim().toUpperCase();
+        }
+
+        function buildManagerInventoryIndex(rows) {
+            const inventoryByEvent = new Map();
+            (rows || []).forEach((row) => {
+                const eventKey = normalizeEventIdKey(row?.eventId);
+                const seatCategory = normalizeSeatCategory(row?.seatCategory);
+                if (!eventKey || !seatCategory) {
+                    return;
+                }
+
+                if (!inventoryByEvent.has(eventKey)) {
+                    inventoryByEvent.set(eventKey, []);
+                }
+                inventoryByEvent.get(eventKey).push({
+                    seatCategory,
+                    totalSeats: Number(row.totalSeats),
+                    availableSeats: Number(row.availableSeats)
+                });
+            });
+
+            return inventoryByEvent;
+        }
+
+        function renderEventInventorySummary(event) {
+            if (managerInventoryError) {
+                return '<p class="event-aux">Ticket inventory is unavailable right now.</p>';
+            }
+
+            const eventKey = normalizeEventIdKey(event.id ?? event.eventId);
+            const inventoryRows = managerInventoryByEvent.get(eventKey) || [];
+            if (!inventoryRows.length) {
+                return '<p class="event-aux">Ticket inventory is not configured yet.</p>';
+            }
+
+            const inventoryMarkup = inventoryRows
+                .slice()
+                .sort((left, right) => left.seatCategory.localeCompare(right.seatCategory))
+                .map((row) => {
+                    const total = Number.isFinite(row.totalSeats) ? Math.max(0, row.totalSeats) : 0;
+                    const available = Number.isFinite(row.availableSeats) ? Math.max(0, row.availableSeats) : 0;
+                    const sold = Math.max(0, total - available);
+                    return `
+                        <p class="manager-inventory-line">
+                            <strong>${escapeHtml(row.seatCategory)}</strong>: ${available}/${total} left (${sold} sold)
+                        </p>
+                    `;
+                })
+                .join("");
+
+            return `
+                <div class="manager-inventory-block">
+                    <p class="event-aux"><strong>Seat Availability</strong></p>
+                    ${inventoryMarkup}
+                </div>
+            `;
         }
 
         function toDatetimeLocal(isoString) {
@@ -549,6 +623,7 @@
                         <p class="event-aux">
                             ${event.pricingTiers.length} tier(s) · ${event.seatSections.length} section(s)
                         </p>
+                        ${renderEventInventorySummary(event)}
                     </div>
                     <div class="ticket-actions">
                         <button type="button" class="btn-primary js-edit-event">Edit Details</button>
@@ -586,6 +661,14 @@
 
             try {
                 managedEvents = await getManagingEvents(managerId);
+                managerInventoryError = "";
+                try {
+                    const inventorySnapshot = await getInventorySnapshot();
+                    managerInventoryByEvent = buildManagerInventoryIndex(inventorySnapshot);
+                } catch (_inventoryError) {
+                    managerInventoryByEvent = new Map();
+                    managerInventoryError = "Ticket inventory is unavailable right now.";
+                }
                 loading.classList.add("hidden");
 
                 if (!managedEvents.length) {
