@@ -432,6 +432,12 @@ async function getPurchaseTicketMapping(ticketId) {
     return apiRequest(`/purchase/ticket/${ticketId}`);
 }
 
+async function resendPurchaseConfirmationEmail(purchaseId) {
+    return apiRequest(`/purchase/${purchaseId}/confirmation-email`, {
+        method: "POST"
+    });
+}
+
 // Refund Composite
 async function requestRefundByTicket(ticketId, data = {}) {
     return apiRequest(`/refunds/${ticketId}`, {

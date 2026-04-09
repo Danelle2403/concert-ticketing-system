@@ -3,6 +3,7 @@
     { "id": 1, "name": "Alice Fan", "email": "fan@example.com", "password": "Concert123!", "role": "fan" },
     { "id": 2, "name": "Noah Fan", "email": "fan2@example.com", "password": "Concert123!", "role": "fan" },
     { "id": 3, "name": "Chloe Fan", "email": "fan3@example.com", "password": "Concert123!", "role": "fan" },
+    { "id": 134, "name": "SH", "email": "sh.yeo.2023@scis.smu.edu.sg", "password": "Concert123!", "role": "fan" },
     { "id": 99, "name": "Maya Manager", "email": "manager@example.com", "password": "Concert123!", "role": "manager" },
     { "id": 123, "name": "Legacy Fan", "email": "legacyfan@example.com", "password": "Concert123!", "role": "fan" }
   ],

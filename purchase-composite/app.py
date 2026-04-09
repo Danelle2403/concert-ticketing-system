@@ -1,10 +1,12 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -363,17 +365,144 @@ def refund_payment(payment_intent_id, amount_minor, reason, metadata):
     return extract_data(body)
 
 
-def send_purchase_confirmation_notification(payload):
-    try:
-        req_json(
-            "POST",
-            f"{NOTIFICATION_SERVICE_URL}/notifications/purchase-confirmation",
-            payload,
-            timeout=10,
+def send_purchase_confirmation_notification(payload, attempts=2):
+    last_error = None
+    for attempt in range(max(1, int(attempts or 1))):
+        try:
+            code, body = req_json(
+                "POST",
+                f"{NOTIFICATION_SERVICE_URL}/notifications/purchase-confirmation",
+                payload,
+                timeout=10,
+            )
+            if code in (200, 201, 202):
+                return {"ok": True, "statusCode": code, "body": body, "error": None}
+            last_error = f"Notification service returned {code}: {body}"
+        except Exception as error:
+            last_error = str(error)
+
+        app.logger.warning(
+            "Purchase confirmation email handoff failed on attempt %s/%s for purchase %s: %s",
+            attempt + 1,
+            max(1, int(attempts or 1)),
+            payload.get("purchaseId"),
+            last_error,
         )
-    except Exception:
-        return False
-    return True
+        if attempt + 1 < max(1, int(attempts or 1)):
+            time.sleep(0.25)
+
+    return {"ok": False, "statusCode": None, "body": None, "error": last_error}
+
+
+def build_purchase_confirmation_payload(
+    *,
+    purchase_id,
+    event_id,
+    event_title_value,
+    event_venue_value,
+    event_date_value,
+    buyer_name,
+    buyer_email,
+    amount_paid,
+    currency,
+    seat_category,
+    ticket_ids,
+    ticket_details,
+    order_ids,
+    payment_charge_id=None,
+    payment_intent_id=None,
+):
+    return {
+        "purchaseId": purchase_id,
+        "paymentIntentId": payment_intent_id,
+        "paymentChargeId": payment_charge_id,
+        "amountPaid": amount_paid,
+        "currency": currency,
+        "buyerName": buyer_name,
+        "buyerEmail": buyer_email,
+        "event": {
+            "eventId": event_id,
+            "title": event_title_value,
+            "venue": event_venue_value,
+            "date": event_date_value,
+        },
+        "seatCategory": seat_category,
+        "ticketIds": ticket_ids,
+        "ticketDetails": ticket_details,
+        "orderIds": order_ids,
+    }
+
+
+def build_ticket_qr_detail(ticket_id, event_id, user_id, date, seat_category):
+    seed = json.dumps(
+        {
+            "ticketId": str(ticket_id or ""),
+            "eventId": str(event_id or ""),
+            "userId": str(user_id or ""),
+            "date": str(date or ""),
+            "seatCategory": str(seat_category or ""),
+        },
+        separators=(",", ":"),
+    )
+    ticket_hash = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+    qr_payload = json.dumps(
+        {
+            "ticketId": str(ticket_id or ""),
+            "eventId": str(event_id or ""),
+            "ticketHash": ticket_hash,
+        },
+        separators=(",", ":"),
+    )
+    return {
+        "ticketId": str(ticket_id or ""),
+        "seatCategory": str(seat_category or ""),
+        "ticketHash": ticket_hash,
+        "qrPayload": qr_payload,
+    }
+
+
+def build_purchase_confirmation_payload_from_records(purchase_row, ticket_rows, auth_user=None):
+    purchase = serialize_purchase_row(purchase_row)
+    tickets = [dict(row) for row in ticket_rows]
+    first_ticket = tickets[0] if tickets else {}
+    ticket_ids = [str(row.get("ticketId") or "") for row in tickets if row.get("ticketId")]
+    order_ids = [
+        row.get("orderId") for row in tickets if row.get("orderId") is not None
+    ] or purchase.get("orderIds", [])
+    buyer_name = purchase.get("buyerName") or (auth_user or {}).get("name")
+    buyer_email = purchase.get("buyerEmail") or (auth_user or {}).get("email")
+    event_id = str(first_ticket.get("eventId") or purchase.get("eventId") or "")
+    event_title_value = first_ticket.get("eventName") or f"Concert {event_id}"
+    event_venue_value = first_ticket.get("venue") or "Venue TBC"
+    event_date_value = first_ticket.get("date") or ""
+    seat_category = first_ticket.get("seatCategory") or purchase.get("seatCategory") or ""
+    ticket_details = [
+        build_ticket_qr_detail(
+            ticket_id=row.get("ticketId"),
+            event_id=row.get("eventId") or event_id,
+            user_id=purchase.get("userId"),
+            date=row.get("date") or event_date_value,
+            seat_category=row.get("seatCategory") or seat_category,
+        )
+        for row in tickets
+    ]
+    return build_purchase_confirmation_payload(
+        purchase_id=purchase.get("purchaseId"),
+        payment_intent_id=purchase.get("paymentIntentId"),
+        payment_charge_id=purchase.get("latestChargeId") or purchase.get("paymentChargeId"),
+        amount_paid=purchase.get("amountPaid"),
+        currency=purchase.get("currency") or DEFAULT_CURRENCY,
+        buyer_name=buyer_name,
+        buyer_email=buyer_email,
+        event_id=event_id,
+        event_title_value=event_title_value,
+        event_venue_value=event_venue_value,
+        event_date_value=event_date_value,
+        seat_category=seat_category,
+        ticket_ids=ticket_ids or purchase.get("ticketIds", []),
+        ticket_details=ticket_details,
+        order_ids=order_ids,
+    )
 
 
 def issue_ticket(event_id):
@@ -798,7 +927,9 @@ def create_checkout_session():
     event_id = normalize_event_id(data.get("eventId"))
     quantity = int(data.get("quantity", 1))
     buyer_name = str(data.get("name") or "").strip()
-    buyer_email = str(data.get("email") or "").strip()
+    submitted_email = str(data.get("email") or "").strip()
+    account_email = str(auth_user.get("email") or "").strip()
+    buyer_email = account_email or submitted_email
 
     if not event_id:
         return jsonify({"error": "eventId is required"}), 400
@@ -806,6 +937,8 @@ def create_checkout_session():
         return jsonify({"error": "quantity must be > 0"}), 400
     if not buyer_name or not buyer_email:
         return jsonify({"error": "name and email are required"}), 400
+    if submitted_email and account_email and submitted_email.lower() != account_email.lower():
+        return jsonify({"error": "email must match the signed-in account"}), 400
 
     user_id = int(auth_user["userId"])
     if user_id_raw is not None:
@@ -840,7 +973,7 @@ def create_checkout_session():
             amount_minor=amount_minor,
             currency=currency,
             description=f"Concert purchase for {event_title(event)}",
-            receipt_email=buyer_email or auth_user.get("email"),
+            receipt_email=buyer_email,
             metadata={
                 "checkoutSessionId": checkout_session_id,
                 "eventId": str(event_id),
@@ -871,7 +1004,7 @@ def create_checkout_session():
                 amount_per_ticket * quantity,
                 currency,
                 buyer_name,
-                buyer_email or auth_user.get("email"),
+                buyer_email,
                 json.dumps([hold["holdId"] for hold in created_holds]),
                 payment_intent["paymentIntentId"],
                 payment_intent["clientSecret"],
@@ -1048,6 +1181,16 @@ def confirm_checkout_session():
 
         order_ids = [row["orderId"] for row in created_rows if row.get("orderId") is not None]
         ticket_ids = [row["ticketId"] for row in created_rows]
+        ticket_details = [
+            build_ticket_qr_detail(
+                ticket_id=row["ticketId"],
+                event_id=event_id,
+                user_id=checkout_session["userId"],
+                date=event_date_label(event),
+                seat_category=checkout_session["seatCategory"],
+            )
+            for row in created_rows
+        ]
 
         cur.execute(
             """
@@ -1120,25 +1263,24 @@ def confirm_checkout_session():
         conn.commit()
         conn.close()
 
-        send_purchase_confirmation_notification(
-            {
-                "purchaseId": purchase_id,
-                "paymentIntentId": checkout_session["paymentIntentId"],
-                "paymentChargeId": latest_charge_id,
-                "amountPaid": checkout_session["amountPaid"],
-                "currency": checkout_session["currency"],
-                "buyerName": checkout_session.get("buyerName"),
-                "buyerEmail": checkout_session.get("buyerEmail"),
-                "event": {
-                    "eventId": event_id,
-                    "title": event_title(event),
-                    "venue": event_venue_label(event),
-                    "date": event_date_label(event),
-                },
-                "ticketIds": ticket_ids,
-                "orderIds": order_ids,
-            }
+        notification_payload = build_purchase_confirmation_payload(
+            purchase_id=purchase_id,
+            payment_intent_id=checkout_session["paymentIntentId"],
+            payment_charge_id=latest_charge_id,
+            amount_paid=checkout_session["amountPaid"],
+            currency=checkout_session["currency"],
+            buyer_name=checkout_session.get("buyerName"),
+            buyer_email=checkout_session.get("buyerEmail"),
+            event_id=event_id,
+            event_title_value=event_title(event),
+            event_venue_value=event_venue_label(event),
+            event_date_value=event_date_label(event),
+            seat_category=checkout_session["seatCategory"],
+            ticket_ids=ticket_ids,
+            ticket_details=ticket_details,
+            order_ids=order_ids,
         )
+        notification_result = send_purchase_confirmation_notification(notification_payload)
 
         return (
             jsonify(
@@ -1148,7 +1290,11 @@ def confirm_checkout_session():
                     "status": "SUCCESS",
                     "paymentIntentId": checkout_session["paymentIntentId"],
                     "paymentChargeId": latest_charge_id,
+                    "seatCategory": checkout_session["seatCategory"],
                     "tickets": ticket_ids,
+                    "ticketDetails": ticket_details,
+                    "notificationSent": notification_result["ok"],
+                    "notificationError": notification_result["error"],
                 }
             ),
             201,
@@ -1317,6 +1463,16 @@ def checkout():
         now = utc_now_iso()
         order_ids = [row["orderId"] for row in created_rows if row.get("orderId") is not None]
         ticket_ids = [row["ticketId"] for row in created_rows]
+        ticket_details = [
+            build_ticket_qr_detail(
+                ticket_id=row["ticketId"],
+                event_id=event_id,
+                user_id=user_id,
+                date=event_date_label(event),
+                seat_category=seat_category,
+            )
+            for row in created_rows
+        ]
 
         cur.execute(
             """
@@ -1365,6 +1521,23 @@ def checkout():
             )
 
         conn.commit()
+        notification_payload = build_purchase_confirmation_payload(
+            purchase_id=purchase_id,
+            payment_charge_id=payment_charge_id,
+            amount_paid=amount_paid * quantity,
+            currency=event_currency(event),
+            buyer_name=auth_user.get("name"),
+            buyer_email=auth_user.get("email"),
+            event_id=event_id,
+            event_title_value=event_title(event),
+            event_venue_value=event_venue_label(event),
+            event_date_value=event_date_label(event),
+            seat_category=seat_category,
+            ticket_ids=ticket_ids,
+            ticket_details=ticket_details,
+            order_ids=order_ids,
+        )
+        notification_result = send_purchase_confirmation_notification(notification_payload)
         return (
             jsonify(
                 {
@@ -1372,7 +1545,11 @@ def checkout():
                     "orderIds": order_ids,
                     "status": "SUCCESS",
                     "paymentChargeId": payment_charge_id,
+                    "seatCategory": seat_category,
                     "tickets": ticket_ids,
+                    "ticketDetails": ticket_details,
+                    "notificationSent": notification_result["ok"],
+                    "notificationError": notification_result["error"],
                 }
             ),
             201,
@@ -1447,6 +1624,51 @@ def purchase_status(purchaseId):
         return jsonify({"error": "Forbidden"}), 403
     payload["orders"] = [fetch_external_order(order_id) for order_id in payload["orderIds"]]
     return jsonify(payload), 200
+
+
+@app.route("/purchase/<purchaseId>/confirmation-email", methods=["POST"])
+def resend_purchase_confirmation_email(purchaseId):
+    auth_user, error_response = require_authenticated_user()
+    if error_response:
+        return error_response
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM purchases WHERE purchaseId = ?", (purchaseId,))
+    purchase_row = cur.fetchone()
+    if not purchase_row:
+        conn.close()
+        return jsonify({"error": "Purchase not found"}), 404
+
+    purchase_payload = serialize_purchase_row(purchase_row)
+    if int(purchase_payload["userId"]) != int(auth_user["userId"]):
+        conn.close()
+        return jsonify({"error": "Forbidden"}), 403
+
+    cur.execute("SELECT * FROM ticket_map WHERE purchaseId = ? ORDER BY ticketId", (purchaseId,))
+    ticket_rows = cur.fetchall()
+    conn.close()
+
+    if not ticket_rows:
+        return jsonify({"error": "Purchase tickets not found"}), 404
+
+    notification_payload = build_purchase_confirmation_payload_from_records(
+        purchase_row,
+        ticket_rows,
+        auth_user=auth_user,
+    )
+    notification_result = send_purchase_confirmation_notification(notification_payload)
+    status_code = 200 if notification_result["ok"] else 502
+    return (
+        jsonify(
+            {
+                "purchaseId": purchaseId,
+                "notificationSent": notification_result["ok"],
+                "notificationError": notification_result["error"],
+            }
+        ),
+        status_code,
+    )
 
 
 @app.route("/purchase/ticket/<ticketId>", methods=["GET"])

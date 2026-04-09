@@ -50,7 +50,8 @@
 
             <div class="form-group">
                 <label for="buyer-email">Email</label>
-                <input type="email" id="buyer-email" placeholder="you@example.com">
+                <input type="email" id="buyer-email" placeholder="you@example.com" readonly>
+                <p class="helper-text">Purchase confirmations are sent to your signed-in account email.</p>
             </div>
 
             <div class="form-group">
@@ -578,12 +579,33 @@
                     paymentIntentId: result.paymentIntent.id
                 });
 
+                if (purchase.purchaseId && purchase.notificationSent === false) {
+                    try {
+                        const resendResult = await resendPurchaseConfirmationEmail(purchase.purchaseId);
+                        purchase.notificationSent = resendResult.notificationSent;
+                        purchase.notificationError = resendResult.notificationError || null;
+                    } catch (emailError) {
+                        purchase.notificationSent = false;
+                        purchase.notificationError = emailError.message || "Confirmation email could not be sent.";
+                    }
+                }
+
                 sessionStorage.setItem("lastPurchase", JSON.stringify(purchase));
-                document.getElementById("purchase-success").classList.remove("hidden");
+                const successBox = document.getElementById("purchase-success");
+                successBox.textContent = purchase.notificationSent === false
+                    ? "Payment complete. Your tickets are confirmed, but the confirmation email could not be sent automatically."
+                    : "Payment complete. Your tickets are confirmed.";
+                successBox.classList.remove("hidden");
+
+                if (purchase.notificationSent === false) {
+                    const stripeError = document.getElementById("stripe-error");
+                    stripeError.textContent = purchase.notificationError || "Confirmation email could not be sent.";
+                    stripeError.classList.remove("hidden");
+                }
 
                 setTimeout(() => {
                     window.location.href = "request-refund.html";
-                }, 1600);
+                }, purchase.notificationSent === false ? 2600 : 1600);
             } catch (error) {
                 const stripeError = document.getElementById("stripe-error");
                 stripeError.textContent = error.message || "Payment failed.";

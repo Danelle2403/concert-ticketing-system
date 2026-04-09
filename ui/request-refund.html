@@ -82,6 +82,13 @@
 
         // Check login
         const user = getStoredUser();
+        const lastPurchase = (() => {
+            try {
+                return JSON.parse(sessionStorage.getItem("lastPurchase"));
+            } catch (_error) {
+                return null;
+            }
+        })();
         const urlParams = new URLSearchParams(window.location.search);
         let selectedTicketId = null;
         let selectedRefundSource = "customer_request";
@@ -126,6 +133,16 @@
         }
 
         async function buildTicketQrModel(ticket, seatCategory) {
+            const lastPurchaseDetails = Array.isArray(lastPurchase?.ticketDetails)
+                ? lastPurchase.ticketDetails.find((detail) => String(detail?.ticketId) === String(ticket?.ticketId))
+                : null;
+            if (lastPurchaseDetails?.ticketHash && lastPurchaseDetails?.qrPayload) {
+                return {
+                    ticketHash: String(lastPurchaseDetails.ticketHash),
+                    qrPayload: String(lastPurchaseDetails.qrPayload)
+                };
+            }
+
             const seed = JSON.stringify({
                 ticketId: String(ticket.ticketId || ""),
                 eventId: String(ticket.eventId || ""),
@@ -218,10 +235,24 @@
 
                 const uniqueTicketIds = [...new Set(data.events.map((ticket) => ticket.ticketId).filter(Boolean))];
                 const ticketTypeLookup = {};
+                const lastPurchaseSeatCategoryByTicketId = {};
+                if (Array.isArray(lastPurchase?.ticketDetails)) {
+                    lastPurchase.ticketDetails.forEach((detail) => {
+                        const ticketId = String(detail?.ticketId || "");
+                        if (!ticketId) {
+                            return;
+                        }
+                        lastPurchaseSeatCategoryByTicketId[ticketId] = String(detail?.seatCategory || "");
+                    });
+                }
                 await Promise.all(uniqueTicketIds.map(async (ticketId) => {
+                    if (lastPurchaseSeatCategoryByTicketId[String(ticketId)]) {
+                        ticketTypeLookup[String(ticketId)] = lastPurchaseSeatCategoryByTicketId[String(ticketId)];
+                        return;
+                    }
                     try {
                         const mapping = await getPurchaseTicketMapping(ticketId);
-                        ticketTypeLookup[String(ticketId)] = mapping?.seatCategory || "";
+                        ticketTypeLookup[String(ticketId)] = mapping?.seatCategory || mapping?.data?.seatCategory || "";
                     } catch (_error) {
                         ticketTypeLookup[String(ticketId)] = "";
                     }

@@ -27,6 +27,7 @@ def client(tmp_path, monkeypatch):
 
 def test_checkout_uses_live_order_service_contract(client, monkeypatch):
     captured_order_payload = {}
+    sent_notifications = []
     monkeypatch.setattr(purchase_app, "authenticate_request_user", lambda: dict(AUTH_USER))
 
     def fake_req_json(method, url, payload=None, timeout=8):
@@ -45,6 +46,12 @@ def test_checkout_uses_live_order_service_contract(client, monkeypatch):
 
     monkeypatch.setattr(purchase_app, "req_json", fake_req_json)
     monkeypatch.setattr(purchase_app, "issue_ticket", lambda _event_id: "2")
+    monkeypatch.setattr(
+        purchase_app,
+        "send_purchase_confirmation_notification",
+        lambda payload, attempts=2: sent_notifications.append(payload)
+        or {"ok": True, "statusCode": 200, "body": {"status": "processed"}, "error": None},
+    )
 
     response = client.post(
         "/purchase/checkout",
@@ -63,6 +70,11 @@ def test_checkout_uses_live_order_service_contract(client, monkeypatch):
         "SeatCategory": "Standard",
         "AmountPaid": 80.0,
     }
+    assert payload["seatCategory"] == "STANDARD"
+    assert payload["ticketDetails"][0]["ticketId"] == "2"
+    assert payload["notificationSent"] is True
+    assert payload["notificationError"] is None
+    assert sent_notifications[0]["ticketDetails"][0]["seatCategory"] == "STANDARD"
 
 
 def test_ticket_status_update_pushes_external_order_status(client, monkeypatch):
@@ -143,7 +155,8 @@ def test_checkout_session_and_confirm_use_stripe_flow(client, monkeypatch):
     monkeypatch.setattr(
         purchase_app,
         "send_purchase_confirmation_notification",
-        lambda payload: sent_notifications.append(payload) or True,
+        lambda payload, attempts=2: sent_notifications.append(payload)
+        or {"ok": True, "statusCode": 200, "body": {"status": "processed"}, "error": None},
     )
 
     session_response = client.post(
@@ -176,6 +189,10 @@ def test_checkout_session_and_confirm_use_stripe_flow(client, monkeypatch):
     assert confirm_payload["orderIds"] == [77]
     assert confirm_payload["tickets"] == ["2"]
     assert confirm_payload["paymentChargeId"] == "ch_123"
+    assert confirm_payload["ticketDetails"][0]["ticketId"] == "2"
+    assert confirm_payload["ticketDetails"][0]["seatCategory"] == "STANDARD"
+    assert confirm_payload["notificationSent"] is True
+    assert confirm_payload["notificationError"] is None
     assert captured_order_payload == {
         "FanId": 2,
         "TicketId": 2,
@@ -185,6 +202,50 @@ def test_checkout_session_and_confirm_use_stripe_flow(client, monkeypatch):
         "AmountPaid": 80.0,
     }
     assert sent_notifications[0]["purchaseId"] == confirm_payload["purchaseId"]
+    assert sent_notifications[0]["ticketDetails"][0]["ticketHash"]
+    assert sent_notifications[0]["buyerEmail"] == AUTH_USER["email"]
+
+
+def test_resend_purchase_confirmation_email_retries_for_owner(client, monkeypatch):
+    sent_notifications = []
+    monkeypatch.setattr(purchase_app, "authenticate_request_user", lambda: dict(AUTH_USER))
+    monkeypatch.setattr(
+        purchase_app,
+        "send_purchase_confirmation_notification",
+        lambda payload, attempts=2: sent_notifications.append(payload)
+        or {"ok": True, "statusCode": 200, "body": {"status": "processed"}, "error": None},
+    )
+
+    response = client.post("/purchase/ORDER-DEMO-3/confirmation-email")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload == {
+        "purchaseId": "ORDER-DEMO-3",
+        "notificationSent": True,
+        "notificationError": None,
+    }
+    assert sent_notifications[0]["purchaseId"] == "ORDER-DEMO-3"
+    assert sent_notifications[0]["ticketDetails"][0]["ticketId"] == "2"
+
+
+def test_checkout_session_rejects_email_that_does_not_match_signed_in_account(client, monkeypatch):
+    monkeypatch.setattr(purchase_app, "authenticate_request_user", lambda: dict(AUTH_USER))
+
+    response = client.post(
+        "/purchase/checkout/session",
+        json={
+            "userId": "fan-002",
+            "eventId": "con-001",
+            "quantity": 1,
+            "name": "Noah Fan",
+            "email": "someone-else@example.com",
+            "seatCategory": "Standard",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "email must match the signed-in account"
 
 
 def test_create_external_order_rejects_non_numeric_ticket_ids():

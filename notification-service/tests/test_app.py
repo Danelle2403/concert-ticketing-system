@@ -97,6 +97,41 @@ def test_build_subject_uses_refund_event_title():
     assert subject == "Refund confirmed: Pulse Arena Nights"
 
 
+def test_purchase_confirmation_email_includes_ticket_type_hash_and_qr():
+    payload = {
+        "type": "purchase.confirmed",
+        "purchaseId": "p-123",
+        "amountPaid": 88.0,
+        "currency": "sgd",
+        "event": {
+            "eventId": "evt-123",
+            "title": "Pulse Arena Nights",
+            "venue": "Indoor Stadium",
+            "date": "2026-08-15",
+        },
+        "ticketIds": [101],
+        "ticketDetails": [
+            {
+                "ticketId": 101,
+                "seatCategory": "STANDARD",
+                "ticketHash": "abc123hash",
+                "qrPayload": '{"ticketId":"101","eventId":"evt-123","ticketHash":"abc123hash"}',
+            }
+        ],
+    }
+
+    plain_text = notification_app.build_plain_text_body(payload, "Fan One")
+    html = notification_app.build_html_body(payload, "Fan One")
+
+    assert "Ticket IDs: 101" in plain_text
+    assert "Ticket Type: Standard" in plain_text
+    assert "Ticket Hash: abc123hash" in plain_text
+    assert "Ticket QR code" in html
+    assert "Ticket Type:</strong> Standard" in html
+    assert "abc123hash" in html
+    assert "api.qrserver.com" in html
+
+
 def test_refund_failure_cancelled_event_mentions_manager_follow_up():
     payload = {
         "type": "refund.failure",
