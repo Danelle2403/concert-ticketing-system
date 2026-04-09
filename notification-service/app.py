@@ -186,6 +186,7 @@ def build_plain_text_body(payload, recipient_name):
     if notification_type == "purchase.confirmed":
         event_snapshot = payload.get("event") or {}
         ticket_ids = payload.get("ticketIds") or []
+        ticket_id_labels = [str(ticket_id) for ticket_id in ticket_ids if ticket_id is not None]
         ticket_details = payload.get("ticketDetails") or []
         detail_lines = []
         for detail in ticket_details:
@@ -206,7 +207,7 @@ def build_plain_text_body(payload, recipient_name):
                 f"Date: {event_snapshot.get('date') or 'Date TBC'}",
                 f"Purchase ID: {payload.get('purchaseId')}",
                 f"Amount paid: {format_money(payload.get('amountPaid'), payload.get('currency'))}",
-                f"Ticket IDs: {', '.join(ticket_ids) if ticket_ids else 'Pending'}",
+                f"Ticket IDs: {', '.join(ticket_id_labels) if ticket_id_labels else 'Pending'}",
                 "",
                 *detail_lines,
                 "Keep this email as your receipt and refer to My Tickets for your latest ticket status.",

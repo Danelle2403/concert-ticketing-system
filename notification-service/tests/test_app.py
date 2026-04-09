@@ -109,13 +109,13 @@ def test_purchase_confirmation_email_includes_ticket_type_hash_and_qr():
             "venue": "Indoor Stadium",
             "date": "2026-08-15",
         },
-        "ticketIds": ["T1"],
+        "ticketIds": [101],
         "ticketDetails": [
             {
-                "ticketId": "T1",
+                "ticketId": 101,
                 "seatCategory": "STANDARD",
                 "ticketHash": "abc123hash",
-                "qrPayload": '{"ticketId":"T1","eventId":"evt-123","ticketHash":"abc123hash"}',
+                "qrPayload": '{"ticketId":"101","eventId":"evt-123","ticketHash":"abc123hash"}',
             }
         ],
     }
@@ -123,6 +123,7 @@ def test_purchase_confirmation_email_includes_ticket_type_hash_and_qr():
     plain_text = notification_app.build_plain_text_body(payload, "Fan One")
     html = notification_app.build_html_body(payload, "Fan One")
 
+    assert "Ticket IDs: 101" in plain_text
     assert "Ticket Type: Standard" in plain_text
     assert "Ticket Hash: abc123hash" in plain_text
     assert "Ticket QR code" in html
